@@ -84,6 +84,8 @@ def input_text(
         ord(character) < 32 or ord(character) == 127 for character in text
     ):
         raise InputError("the ADB text backend supports printable ASCII only")
-    encoded = shlex.quote(text.replace(" ", "%s"))
-    result = runner.run(("shell", "input", "text", encoded), serial=serial, timeout=timeout)
+    encoded = text.replace(" ", "%s")
+    # Make ADB's remote-shell parsing explicit and quote the only user-controlled value.
+    remote_command = f"input text {shlex.quote(encoded)}"
+    result = runner.run(("shell", remote_command), serial=serial, timeout=timeout)
     return PrimitiveResult("input_text", result.duration_seconds)

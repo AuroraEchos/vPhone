@@ -23,7 +23,10 @@ class AdbDeviceBackend:
         return list_devices(self._runner, timeout=timeout)
 
     def open(self, device_id: str, *, timeout: float = 5.0) -> AdbDeviceSession:
-        if not isinstance(device_id, str) or not device_id.strip():
+        if not isinstance(device_id, str):
+            raise TypeError("device_id must be a string")
+        device_id = device_id.strip()
+        if not device_id:
             raise ValueError("device_id must be a non-empty string")
         descriptor = next(
             (item for item in self.list_devices(timeout=timeout) if item.device_id == device_id),

@@ -25,7 +25,7 @@ def parse_ui_tree(
         raise UiTreeError("UI hierarchy is empty")
     if len(xml_data) > _MAX_XML_BYTES:
         raise UiTreeError(f"UI hierarchy exceeds {_MAX_XML_BYTES} bytes")
-    upper = xml_data[:4096].upper()
+    upper = xml_data.upper()
     if b"<!DOCTYPE" in upper or b"<!ENTITY" in upper:
         raise UiTreeError("UI hierarchy contains a forbidden XML declaration")
     try:

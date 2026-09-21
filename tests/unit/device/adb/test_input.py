@@ -43,7 +43,15 @@ def test_input_text_encodes_spaces() -> None:
 
     adb_input.input_text(runner, "serial", "hello phone")
 
-    assert runner.calls[0][0] == ("shell", "input", "text", "hello%sphone")
+    assert runner.calls[0][0] == ("shell", "input text hello%sphone")
+
+
+def test_input_text_quotes_remote_shell_metacharacters() -> None:
+    runner = FakeRunner()
+
+    adb_input.input_text(runner, "serial", "it's & safe")
+
+    assert runner.calls[0][0] == ("shell", "input text 'it'\"'\"'s%s&%ssafe'")
 
 
 def test_input_text_rejects_unicode() -> None:

@@ -54,3 +54,10 @@ def test_parse_ui_tree_rejects_doctype() -> None:
 
     with pytest.raises(UiTreeError, match="forbidden"):
         parse_ui_tree(xml, captured_at=1.0, duration_seconds=0.1)
+
+
+def test_parse_ui_tree_rejects_doctype_after_initial_scan_window() -> None:
+    xml = b" " * 4096 + b'<!DOCTYPE hierarchy><hierarchy rotation="0" />'
+
+    with pytest.raises(UiTreeError, match="forbidden"):
+        parse_ui_tree(xml, captured_at=1.0, duration_seconds=0.1)
