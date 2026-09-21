@@ -187,6 +187,7 @@ fix/tree-capture-race
 refactor/device-errors
 docs/development-guide
 chore/update-dependencies
+review/l2-action-pr
 ```
 
 分支前缀含义：
@@ -197,6 +198,7 @@ chore/update-dependencies
 - `docs/`：纯文档修改。
 - `test/`：测试相关修改。
 - `chore/`：依赖、工具或工程配置。
+- `review/`：包含代码审核、测试以及必要的修正，通常不直接合并。
 
 ### 4.3 创建分支
 

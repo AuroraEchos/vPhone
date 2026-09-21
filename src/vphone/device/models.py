@@ -46,7 +46,7 @@ class DeviceCapabilities:
     coordinate_input: bool = True
     key_events: bool = True
     ascii_text: bool = True
-    unicode_text: bool = False
+    unicode_text: bool = True
     native_node_action: bool = False
 
 

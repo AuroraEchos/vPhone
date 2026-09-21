@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+
 import pytest
 
 from vphone.device.adb import input as adb_input
@@ -13,7 +15,8 @@ class FakeRunner:
 
     def run(self, args, **kwargs):
         self.calls.append((tuple(args), kwargs))
-        return CommandResult(tuple(args), 0, b"", b"", 0.1)
+        stdout = b"OK (1 test)\n" if "uiautomator" in args else b""
+        return CommandResult(tuple(args), 0, stdout, b"", 0.1)
 
 
 def test_tap_builds_input_command() -> None:
@@ -54,6 +57,34 @@ def test_input_text_quotes_remote_shell_metacharacters() -> None:
     assert runner.calls[0][0] == ("shell", "input text 'it'\"'\"'s%s&%ssafe'")
 
 
-def test_input_text_rejects_unicode() -> None:
-    with pytest.raises(InputError, match="ASCII"):
-        adb_input.input_text(FakeRunner(), "serial", "你好")
+def test_input_text_uses_packaged_helper_for_unicode() -> None:
+    runner = FakeRunner()
+
+    result = adb_input.input_text(runner, "serial", "你好")
+
+    assert result.operation == "input_text"
+    assert runner.calls[0][0][0] == "push"
+    command = runner.calls[1][0]
+    assert command[:3] == ("shell", "uiautomator", "runtest")
+    encoded = command[command.index("text_base64") + 1]
+    assert base64.b64decode(encoded).decode("utf-8") == "你好"
+    assert runner.calls[2][0][:3] == ("shell", "rm", "-f")
+
+
+def test_input_text_rejects_control_characters() -> None:
+    with pytest.raises(InputError, match="printable"):
+        adb_input.input_text(FakeRunner(), "serial", "first\nsecond")
+
+
+def test_input_text_reports_unicode_helper_failure_and_cleans_up() -> None:
+    class FailingRunner(FakeRunner):
+        def run(self, args, **kwargs):
+            self.calls.append((tuple(args), kwargs))
+            return CommandResult(tuple(args), 0, b"FAILURES!!!\n", b"", 0.1)
+
+    runner = FailingRunner()
+
+    with pytest.raises(InputError, match="rejected Unicode"):
+        adb_input.input_text(runner, "serial", "你好")
+
+    assert runner.calls[-1][0][:3] == ("shell", "rm", "-f")

@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import base64
+import importlib.resources
 import shlex
+import time
+import uuid
 
 from vphone.device.adb.runner import AdbRunner
-from vphone.device.errors import InputError
+from vphone.device.errors import DeviceCommandTimeoutError, DeviceError, InputError
 from vphone.device.models import KeyCode, Point, PrimitiveResult
+
+_UNICODE_HELPER = "resources/vphone-unicode-input.jar"
+_UNICODE_TEST_CLASS = "dev.vphone.UnicodeInputTest"
 
 
 def tap(
@@ -80,12 +87,81 @@ def input_text(
 ) -> PrimitiveResult:
     if not isinstance(text, str) or not text:
         raise InputError("text must be a non-empty string")
-    if not text.isascii() or any(
-        ord(character) < 32 or ord(character) == 127 for character in text
-    ):
-        raise InputError("the ADB text backend supports printable ASCII only")
+    if not text.isprintable():
+        raise InputError("text must contain printable characters only")
+    if not text.isascii():
+        return _input_unicode(runner, serial, text, timeout=timeout)
+
     encoded = text.replace(" ", "%s")
     # Make ADB's remote-shell parsing explicit and quote the only user-controlled value.
     remote_command = f"input text {shlex.quote(encoded)}"
     result = runner.run(("shell", remote_command), serial=serial, timeout=timeout)
     return PrimitiveResult("input_text", result.duration_seconds)
+
+
+def _input_unicode(
+    runner: AdbRunner,
+    serial: str,
+    text: str,
+    *,
+    timeout: float,
+) -> PrimitiveResult:
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    started = time.monotonic()
+    deadline = started + timeout
+    remote_path = f"/data/local/tmp/vphone-unicode-input-{uuid.uuid4().hex}.jar"
+    helper = importlib.resources.files("vphone.device.adb").joinpath(_UNICODE_HELPER)
+
+    try:
+        with importlib.resources.as_file(helper) as helper_path:
+            if not helper_path.is_file():
+                raise InputError("the packaged Unicode input helper is missing")
+            runner.run(
+                ("push", str(helper_path), remote_path),
+                serial=serial,
+                timeout=_remaining_timeout(deadline),
+            )
+
+        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        result = runner.run(
+            (
+                "shell",
+                "uiautomator",
+                "runtest",
+                remote_path,
+                "-c",
+                _UNICODE_TEST_CLASS,
+                "-e",
+                "text_base64",
+                encoded,
+                "-e",
+                "outputFormat",
+                "simple",
+            ),
+            serial=serial,
+            timeout=_remaining_timeout(deadline),
+        )
+        output = result.stdout + result.stderr
+        if b"OK (" not in output or b"FAILURES!!!" in output:
+            raise InputError("the focused UI node rejected Unicode text")
+        return PrimitiveResult("input_text", time.monotonic() - started)
+    finally:
+        try:
+            remaining = deadline - time.monotonic()
+            if remaining > 0:
+                runner.run(
+                    ("shell", "rm", "-f", remote_path),
+                    serial=serial,
+                    timeout=min(remaining, 2.0),
+                    check=False,
+                )
+        except DeviceError:
+            pass
+
+
+def _remaining_timeout(deadline: float) -> float:
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise DeviceCommandTimeoutError("Unicode text input exhausted its timeout budget")
+    return remaining

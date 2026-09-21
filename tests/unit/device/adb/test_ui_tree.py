@@ -32,6 +32,8 @@ def test_capture_ui_tree_dumps_reads_and_cleans_up() -> None:
     assert runner.calls[0][0][:3] == ("shell", "uiautomator", "dump")
     assert runner.calls[1][0][:2] == ("exec-out", "cat")
     assert runner.calls[2][0][:3] == ("shell", "rm", "-f")
+    assert runner.calls[0][0][-1] == runner.calls[1][0][-1] == runner.calls[2][0][-1]
+    assert runner.calls[0][0][-1].startswith("/data/local/tmp/vphone-window-")
     assert all(call[1]["serial"] == "serial" for call in runner.calls)
 
 

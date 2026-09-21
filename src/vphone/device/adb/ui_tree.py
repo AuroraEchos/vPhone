@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import time
+import uuid
 
 from vphone.device.adb.runner import AdbRunner
 from vphone.device.adb.xml_parser import parse_ui_tree
 from vphone.device.errors import DeviceCommandTimeoutError, DeviceError, UiTreeError
 from vphone.device.models import UiTreeSnapshot
-
-_REMOTE_PATH = "/data/local/tmp/vphone-window.xml"
 
 
 def capture_ui_tree(
@@ -22,14 +21,15 @@ def capture_ui_tree(
         raise ValueError("timeout must be positive")
     started = time.monotonic()
     deadline = started + timeout
+    remote_path = f"/data/local/tmp/vphone-window-{uuid.uuid4().hex}.xml"
     try:
         runner.run(
-            ("shell", "uiautomator", "dump", "--compressed", _REMOTE_PATH),
+            ("shell", "uiautomator", "dump", "--compressed", remote_path),
             serial=serial,
             timeout=_remaining_timeout(deadline),
         )
         result = runner.run(
-            ("exec-out", "cat", _REMOTE_PATH),
+            ("exec-out", "cat", remote_path),
             serial=serial,
             timeout=_remaining_timeout(deadline),
         )
@@ -47,7 +47,7 @@ def capture_ui_tree(
             remaining = deadline - time.monotonic()
             if remaining > 0:
                 runner.run(
-                    ("shell", "rm", "-f", _REMOTE_PATH),
+                    ("shell", "rm", "-f", remote_path),
                     serial=serial,
                     timeout=min(remaining, 2.0),
                     check=False,
