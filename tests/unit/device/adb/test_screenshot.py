@@ -36,3 +36,23 @@ def test_capture_screen_returns_verified_frame() -> None:
 def test_capture_screen_rejects_invalid_data() -> None:
     with pytest.raises(ScreenshotError, match="invalid screenshot"):
         capture_screen(FakeRunner(b"not an image"), "serial")
+
+
+def test_capture_screen_wraps_image_verification_syntax_error(monkeypatch) -> None:
+    class MalformedImage:
+        format = "PNG"
+        size = (4, 3)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def verify(self) -> None:
+            raise SyntaxError("malformed PNG")
+
+    monkeypatch.setattr("vphone.device.adb.screenshot.Image.open", lambda _data: MalformedImage())
+
+    with pytest.raises(ScreenshotError, match="invalid screenshot"):
+        capture_screen(FakeRunner(b"malformed PNG"), "serial")

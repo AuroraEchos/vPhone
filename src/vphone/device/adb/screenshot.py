@@ -33,7 +33,7 @@ def capture_screen(
             image.verify()
     except ScreenshotError:
         raise
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError) as exc:
         raise ScreenshotError(f"invalid screenshot data: {exc}") from exc
     return ScreenFrame(
         data=data,
