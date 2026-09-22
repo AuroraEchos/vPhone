@@ -46,9 +46,7 @@ def test_real_ui_xml_parser_preserves_nodes_and_attributes() -> None:
             serial=DEVICE_ID,
             timeout=15,
         )
-        result = runner.run(
-            ("exec-out", "cat", remote_path), serial=DEVICE_ID, timeout=5
-        )
+        result = runner.run(("exec-out", "cat", remote_path), serial=DEVICE_ID, timeout=5)
     finally:
         runner.run(
             ("shell", "rm", "-f", remote_path),
@@ -100,8 +98,7 @@ def test_real_ui_xml_parser_preserves_nodes_and_attributes() -> None:
         assert parsed.resource_id == raw.get("resource-id", "")
         assert (
             f"[{parsed.bounds.left},{parsed.bounds.top}]"
-            f"[{parsed.bounds.right},{parsed.bounds.bottom}]"
-            == raw.get("bounds")
+            f"[{parsed.bounds.right},{parsed.bounds.bottom}]" == raw.get("bounds")
         )
         for field_name, attribute_name in boolean_fields.items():
             default = field_name == "enabled"

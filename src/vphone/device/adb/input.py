@@ -92,11 +92,27 @@ def input_text(
     if not text.isascii():
         return _input_unicode(runner, serial, text, timeout=timeout)
 
-    encoded = text.replace(" ", "%s")
-    # Make ADB's remote-shell parsing explicit and quote the only user-controlled value.
-    remote_command = f"input text {shlex.quote(encoded)}"
-    result = runner.run(("shell", remote_command), serial=serial, timeout=timeout)
-    return PrimitiveResult("input_text", result.duration_seconds)
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    started = time.monotonic()
+    deadline = started + timeout
+    for chunk in _ascii_input_chunks(text):
+        encoded = chunk.replace(" ", "%s")
+        # ADB joins shell arguments, so quote the user-controlled value for the remote shell.
+        remote_command = f"input text {shlex.quote(encoded)}"
+        runner.run(("shell", remote_command), serial=serial, timeout=_remaining_timeout(deadline))
+    return PrimitiveResult("input_text", time.monotonic() - started)
+
+
+def _ascii_input_chunks(text: str) -> list[str]:
+    """Keep literal %s across commands; Android input text decodes it as a space."""
+    chunks: list[str] = []
+    start = 0
+    while (index := text.find("%s", start)) != -1:
+        chunks.append(text[start : index + 1])
+        start = index + 1
+    chunks.append(text[start:])
+    return chunks
 
 
 def _input_unicode(
@@ -163,5 +179,5 @@ def _input_unicode(
 def _remaining_timeout(deadline: float) -> float:
     remaining = deadline - time.monotonic()
     if remaining <= 0:
-        raise DeviceCommandTimeoutError("Unicode text input exhausted its timeout budget")
+        raise DeviceCommandTimeoutError("text input exhausted its timeout budget")
     return remaining

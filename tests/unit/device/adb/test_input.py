@@ -57,6 +57,22 @@ def test_input_text_quotes_remote_shell_metacharacters() -> None:
     assert runner.calls[0][0] == ("shell", "input text 'it'\"'\"'s%s&%ssafe'")
 
 
+@pytest.mark.parametrize(
+    ("text", "commands"),
+    [
+        ("vphone%s42", ["input text vphone%", "input text s42"]),
+        ("%s%s", ["input text %", "input text s%", "input text s"]),
+        ("100% safe", ["input text 100%%ssafe"]),
+    ],
+)
+def test_input_text_preserves_literal_percent_s(text: str, commands: list[str]) -> None:
+    runner = FakeRunner()
+
+    adb_input.input_text(runner, "serial", text)
+
+    assert [call[0] for call in runner.calls] == [("shell", command) for command in commands]
+
+
 def test_input_text_uses_packaged_helper_for_unicode() -> None:
     runner = FakeRunner()
 
