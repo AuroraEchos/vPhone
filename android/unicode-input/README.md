@@ -13,5 +13,7 @@ To rebuild the packaged JAR:
 ANDROID_HOME="$HOME/Android/Sdk" scripts/build-unicode-input-helper.sh
 ```
 
-The helper only receives base64-encoded UTF-8 text. It does not read existing
-text, use the clipboard, or change the selected input method.
+The helper receives base64-encoded UTF-8 text and reads the focused node's
+current text and selection to preserve surrounding content when possible.
+For password fields or unavailable selections, it may replace the entire text.
+It does not use the clipboard or change the selected input method.
