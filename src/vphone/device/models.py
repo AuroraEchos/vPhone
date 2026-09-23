@@ -21,11 +21,11 @@ class ConnectionType(StrEnum):
 
 
 class KeyCode(StrEnum):
-    BACK = "4"
-    HOME = "3"
-    ENTER = "66"
-    POWER = "26"
-    APP_SWITCH = "187"
+    BACK = "4"  # 返回键，回到上一页
+    HOME = "3"  # 主页键，回到系统桌面
+    ENTER = "66"  # 回车键，确认输入
+    POWER = "26"  # 电源键，锁屏/唤醒
+    APP_SWITCH = "187"  # 多任务 / 最近应用键
 
 
 @dataclass(frozen=True, slots=True)

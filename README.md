@@ -2,7 +2,7 @@
 
 用自然语言驱动你的 Android 手机。
 
-当前项目正在从 L1 设备层开始开发。设备层通过官方 ADB 提供设备发现、截图、控件树和基础输入能力，不包含元素匹配、视觉融合或任务决策。
+项目已实现 L1 设备层和 L2 基础动作层。设备层通过官方 ADB 提供设备发现、截图、控件树和输入原语；动作层校验并执行已确定的坐标、按键和文本动作。元素匹配、视觉融合与任务决策仍属于后续层级。
 
 ## 核心感知原则
 
@@ -71,3 +71,5 @@ VPHONE_DEVICE_ID=your-device-id \
 VPHONE_INPUT_TEST_TEXT='真机中文测试' \
 uv run pytest tests/integration/device/test_adb_device.py
 ```
+
+L2 的职责、接口和执行结果语义见 [动作层设计](docs/architecture/l2-action.md)。
