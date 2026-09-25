@@ -12,7 +12,6 @@ from vphone.device.models import (
     Point,
     PrimitiveResult,
     ScreenFrame,
-    UiTreeSnapshot,
 )
 
 
@@ -23,8 +22,6 @@ class DeviceSession(Protocol):
     def health_check(self, *, timeout: float = 5.0) -> DeviceHealth: ...
 
     def capture_screen(self, *, timeout: float = 10.0) -> ScreenFrame: ...
-
-    def capture_ui_tree(self, *, timeout: float = 10.0) -> UiTreeSnapshot: ...
 
     def tap(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult: ...
 
