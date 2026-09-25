@@ -10,7 +10,6 @@ from typing import Self
 from vphone.device.adb import input as adb_input
 from vphone.device.adb.runner import AdbRunner
 from vphone.device.adb.screenshot import capture_screen
-from vphone.device.adb.ui_tree import capture_ui_tree
 from vphone.device.errors import DeviceClosedError
 from vphone.device.models import (
     DeviceCapabilities,
@@ -21,7 +20,6 @@ from vphone.device.models import (
     Point,
     PrimitiveResult,
     ScreenFrame,
-    UiTreeSnapshot,
 )
 
 _DEVICE_LOCKS_GUARD = threading.Lock()
@@ -75,11 +73,6 @@ class AdbDeviceSession:
         with self._lock:
             self._ensure_open()
             return capture_screen(self._runner, self.descriptor.device_id, timeout=timeout)
-
-    def capture_ui_tree(self, *, timeout: float = 10.0) -> UiTreeSnapshot:
-        with self._lock:
-            self._ensure_open()
-            return capture_ui_tree(self._runner, self.descriptor.device_id, timeout=timeout)
 
     def tap(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult:
         with self._lock:

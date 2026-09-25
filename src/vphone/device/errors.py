@@ -49,10 +49,6 @@ class ScreenshotError(DeviceError):
     pass
 
 
-class UiTreeError(DeviceError):
-    pass
-
-
 class InputError(DeviceError):
     pass
 

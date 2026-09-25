@@ -42,12 +42,10 @@ class DeviceDescriptor:
 @dataclass(frozen=True, slots=True)
 class DeviceCapabilities:
     screenshot: bool = True
-    ui_tree: bool = True
     coordinate_input: bool = True
     key_events: bool = True
     ascii_text: bool = True
     unicode_text: bool = True
-    native_node_action: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -119,42 +117,6 @@ class ScreenFrame:
             raise ValueError("screen data cannot be empty")
         if self.width <= 0 or self.height <= 0:
             raise ValueError("screen dimensions must be positive")
-        if self.duration_seconds < 0:
-            raise ValueError("capture duration cannot be negative")
-
-
-@dataclass(frozen=True, slots=True)
-class RawUiNode:
-    node_id: str
-    parent_id: str | None
-    package_name: str
-    class_name: str
-    resource_id: str
-    text: str
-    content_description: str
-    bounds: Rect
-    checkable: bool
-    checked: bool
-    clickable: bool
-    enabled: bool
-    focusable: bool
-    focused: bool
-    scrollable: bool
-    long_clickable: bool
-    selected: bool
-    password: bool
-
-
-@dataclass(frozen=True, slots=True)
-class UiTreeSnapshot:
-    nodes: tuple[RawUiNode, ...]
-    rotation: int | None
-    sha256: str
-    captured_at: float
-    duration_seconds: float
-    source: str = "uiautomator"
-
-    def __post_init__(self) -> None:
         if self.duration_seconds < 0:
             raise ValueError("capture duration cannot be negative")
 

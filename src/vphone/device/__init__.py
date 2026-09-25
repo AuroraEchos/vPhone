@@ -15,7 +15,6 @@ from vphone.device.errors import (
     DeviceUnauthorizedError,
     InputError,
     ScreenshotError,
-    UiTreeError,
     UnsupportedCapabilityError,
 )
 from vphone.device.models import (
@@ -27,10 +26,8 @@ from vphone.device.models import (
     KeyCode,
     Point,
     PrimitiveResult,
-    RawUiNode,
     Rect,
     ScreenFrame,
-    UiTreeSnapshot,
 )
 
 __all__ = [
@@ -55,11 +52,8 @@ __all__ = [
     "KeyCode",
     "Point",
     "PrimitiveResult",
-    "RawUiNode",
     "Rect",
     "ScreenFrame",
     "ScreenshotError",
-    "UiTreeError",
-    "UiTreeSnapshot",
     "UnsupportedCapabilityError",
 ]

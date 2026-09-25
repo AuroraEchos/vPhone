@@ -1,75 +1,52 @@
 # vPhone
 
-用自然语言驱动你的 Android 手机。
+用自然语言驱动 Android 手机。项目处于 `dev` 阶段，尚未形成端到端自然语言 Demo。
 
-项目已实现 L1 设备层和 L2 基础动作层。设备层通过官方 ADB 提供设备发现、截图、控件树和输入原语；动作层校验并执行已确定的坐标、按键和文本动作。元素匹配、视觉融合与任务决策仍属于后续层级。
+## 当前架构
 
-## 核心感知原则
-
-截图呈现当前可见页面，控件树提供结构化元素属性与精确边界。两者各有局限：控件树可能缺失、不完整或与当前画面不一致，因此使用前必须评估可信度；截图也需要经过视觉识别才能定位元素。
-
-整体原则是：
-
-> 截图提供可见页面依据；可信控件树优先提供精确元素，缺失时由视觉兜底；VLM 负责语义决策。
-
-未来的感知层会根据当前页面的控件树质量选择不同策略：
-
-- 控件树可信：优先利用节点文本、状态和边界定位精确候选，并用截图核对其是否符合当前可见页面。
-- 控件树部分可信：保留可信节点作为锚点，由 OCR 或视觉检测补齐缺失区域；不因为树存在就盲信全部节点。
-- 控件树不可用：由截图、OCR 和视觉检测定位候选，再交由 VLM 结合任务语义判断下一步。
-
-原始 XML 不会直接交给模型。感知层会把可信控件树节点、OCR 结果和视觉检测结果转换成统一的候选元素表达，标记来源与置信度；VLM 负责理解任务和选择目标，而不是在已有可靠边界时凭空猜坐标。执行动作后需重新观察页面，确认实际效果。上述质量评估、融合、视觉兜底和语义决策尚未在 L1/L2 实现。
+vPhone 采用**纯视觉感知**：截图是页面状态的唯一观测输入。L3 交付当前完整截图；未来 L4 的多模态模型直接结合截图和用户任务理解页面、选择动作。项目不采集 App 控件树，也不运行 OCR。
 
 ```text
-截图 ───────────────→ 可见页面依据 ──────────────┐
-                                                  ├─→ 候选元素 → VLM 语义决策 → L2 动作
-控件树 → 质量评估 → 可信时优先提供精确元素 ────────┤
-             └─ 缺失或质量不足时由视觉检测兜底 ───┘
+L5 接口层       CLI / Python API / 可选 Web UI（后续）
+L4 决策层       多模态模型理解任务与截图，选择具体动作（后续）
+L3 感知层       当前截图观测（当前首版）
+L2 执行层       校验并派发具体点击、滑动、按键、文本动作
+L1 设备层       ADB 设备发现、截图和输入原语
 ```
+
+运行链路是：采集截图 → 由上层判断下一步 → L2 执行动作 → 重新截图确认效果。当前尚无 L4，因此目标选择与结果判断仍由开发者或测试代码完成。截图本身不提供可点击性或元素语义；未来模型需要基于当前截图判断，也不能复用旧坐标。
 
 ## 开发环境
 
-需要 Python 3.11+、uv、Android Platform Tools 和 Android 5.0+ 设备。
+需要 Python 3.11+、uv、Android Platform Tools，以及已授权的 Android 设备。
 
 ```bash
 uv sync --extra dev
-uv run pytest
-uv run ruff check .
+uv run --extra dev pytest -q
+uv run --extra dev ruff check .
+uv run --extra dev ruff format --check .
 ```
 
-## 设备层示例
+## 真机观察示例
 
 ```python
 from vphone.device import AdbDeviceBackend
+from vphone.perception import PerceptionEngine
 
 backend = AdbDeviceBackend()
 devices = backend.list_devices()
 
 with backend.open(devices[0].device_id) as device:
-    health = device.health_check()
-    screen = device.capture_screen()
-    tree = device.capture_ui_tree()
+    observation = PerceptionEngine().observe(device)
 
-    # 当前输入框获得焦点后，可直接输入中文等 Unicode 文本。
-    device.input_text("你好，vPhone")
-
-    print(health)
-    print(screen.width, screen.height, screen.sha256)
-    print(len(tree.nodes))
+print(observation.screen.width, observation.screen.height)
+print(observation.screen.sha256, observation.observation_id)
 ```
 
-连接真机后，可以显式运行只读集成测试：
+示例仅用于本地调试。截图可能包含个人信息，不要直接写入共享日志或提交到仓库。真实设备只读集成测试需显式设置设备 ID：
 
 ```bash
-VPHONE_DEVICE_ID=your-device-id uv run pytest -m android
+VPHONE_DEVICE_ID=<设备序列号> uv run --extra dev pytest -q -m android
 ```
 
-若已将焦点放在一个可编辑文本框中，可额外验证输入能力：
-
-```bash
-VPHONE_DEVICE_ID=your-device-id \
-VPHONE_INPUT_TEST_TEXT='真机中文测试' \
-uv run pytest tests/integration/device/test_adb_device.py
-```
-
-当前实现的技术设计见 [L1 设备层](docs/architecture/l1-device.md)和 [L2 执行层](docs/architecture/l2-action.md)。上述混合感知原则将在后续 L3 设计中落地。
+技术设计见 [L1 设备层](docs/architecture/l1-device.md)、[L2 执行层](docs/architecture/l2-action.md)和 [L3 感知层](docs/architecture/l3-perception.md)；开发流程见 [开发规范](DEVELOPMENT.md)。
