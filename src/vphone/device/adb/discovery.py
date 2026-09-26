@@ -7,11 +7,28 @@ from vphone.device.models import ConnectionType, DeviceDescriptor, DeviceState
 
 
 def list_devices(runner: AdbRunner, *, timeout: float = 5.0) -> list[DeviceDescriptor]:
+    """Run ADB device discovery and parse its output.
+
+    Args:
+        runner: Subprocess boundary used to invoke ADB.
+        timeout: Maximum command duration in seconds.
+
+    Returns:
+        Descriptors for devices reported by ADB.
+    """
     result = runner.run(("devices", "-l"), timeout=timeout)
     return parse_devices_output(result.stdout.decode("utf-8", errors="replace"))
 
 
 def parse_devices_output(output: str) -> list[DeviceDescriptor]:
+    """Parse ``adb devices -l`` text without discarding non-ready devices.
+
+    Args:
+        output: Raw decoded ADB listing.
+
+    Returns:
+        Device descriptors in listing order.
+    """
     devices: list[DeviceDescriptor] = []
     for raw_line in output.splitlines():
         line = raw_line.strip()
@@ -39,6 +56,7 @@ def parse_devices_output(output: str) -> list[DeviceDescriptor]:
 
 
 def _parse_state(value: str) -> DeviceState:
+    """Map an ADB state token to a known state or ``UNKNOWN``."""
     try:
         return DeviceState(value)
     except ValueError:
@@ -46,6 +64,7 @@ def _parse_state(value: str) -> DeviceState:
 
 
 def _connection_type(device_id: str) -> ConnectionType:
+    """Infer the connection class from the ADB serial format."""
     if device_id.startswith("emulator-"):
         return ConnectionType.EMULATOR
     if ":" in device_id:

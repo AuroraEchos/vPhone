@@ -23,6 +23,17 @@ def tap(
     *,
     timeout: float = 5.0,
 ) -> PrimitiveResult:
+    """Send one coordinate tap through ADB.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        point: Screen pixel to tap.
+        timeout: Maximum command duration in seconds.
+
+    Returns:
+        The completed input primitive and its duration.
+    """
     result = runner.run(
         ("shell", "input", "tap", str(point.x), str(point.y)),
         serial=serial,
@@ -40,6 +51,22 @@ def swipe(
     duration_ms: int = 300,
     timeout: float = 5.0,
 ) -> PrimitiveResult:
+    """Send one timed swipe between screen pixels.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        start: Initial screen pixel.
+        end: Final screen pixel.
+        duration_ms: Swipe duration in milliseconds.
+        timeout: Maximum command duration in seconds.
+
+    Returns:
+        The completed input primitive and its duration.
+
+    Raises:
+        InputError: If the swipe duration is invalid.
+    """
     if isinstance(duration_ms, bool) or not isinstance(duration_ms, int):
         raise InputError("duration_ms must be an integer")
     if not 1 <= duration_ms <= 10_000:
@@ -68,6 +95,20 @@ def key_event(
     *,
     timeout: float = 5.0,
 ) -> PrimitiveResult:
+    """Send one Android key event.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        key: Named Android key or non-negative numeric keycode.
+        timeout: Maximum command duration in seconds.
+
+    Returns:
+        The completed input primitive and its duration.
+
+    Raises:
+        InputError: If the key identifier is invalid.
+    """
     if isinstance(key, KeyCode):
         value = key.value
     elif isinstance(key, int) and not isinstance(key, bool) and key >= 0:
@@ -85,6 +126,23 @@ def input_text(
     *,
     timeout: float = 10.0,
 ) -> PrimitiveResult:
+    """Enter printable text into the currently focused device field.
+
+    ASCII text uses ``input text``; Unicode text uses the packaged helper.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        text: Printable text to enter.
+        timeout: Overall timeout budget in seconds.
+
+    Returns:
+        The completed input primitive and its duration.
+
+    Raises:
+        InputError: If text is invalid or the focused field rejects it.
+        DeviceCommandTimeoutError: If the overall budget is exhausted.
+    """
     if not isinstance(text, str) or not text:
         raise InputError("text must be a non-empty string")
     if not text.isprintable():
@@ -122,6 +180,17 @@ def _input_unicode(
     *,
     timeout: float,
 ) -> PrimitiveResult:
+    """Push the Unicode helper, enter text, and attempt helper cleanup.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        text: Printable Unicode text to enter.
+        timeout: Overall timeout budget in seconds.
+
+    Returns:
+        The completed input primitive and its duration.
+    """
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     started = time.monotonic()
@@ -177,6 +246,17 @@ def _input_unicode(
 
 
 def _remaining_timeout(deadline: float) -> float:
+    """Return remaining command time or fail after budget exhaustion.
+
+    Args:
+        deadline: Monotonic timestamp at which the operation expires.
+
+    Returns:
+        Positive seconds remaining in the operation budget.
+
+    Raises:
+        DeviceCommandTimeoutError: If the deadline has passed.
+    """
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         raise DeviceCommandTimeoutError("text input exhausted its timeout budget")

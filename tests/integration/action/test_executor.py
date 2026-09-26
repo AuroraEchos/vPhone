@@ -1,3 +1,5 @@
+"""Real-device integration coverage for the L2 action executor."""
+
 from __future__ import annotations
 
 import os
@@ -13,6 +15,7 @@ DEVICE_ID = os.getenv("VPHONE_DEVICE_ID")
 @pytest.mark.android
 @pytest.mark.skipif(not DEVICE_ID, reason="VPHONE_DEVICE_ID is not configured")
 def test_executor_sends_home_key_to_real_device() -> None:
+    """Verify executor sends home key to real device."""
     with AdbDeviceBackend().open(DEVICE_ID) as device:
         result = ActionExecutor(device).execute(KeyAction(KeyCode.HOME), timeout=5)
         screen = device.capture_screen(timeout=10)

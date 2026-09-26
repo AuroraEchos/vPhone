@@ -6,6 +6,7 @@ from vphone.perception import PerceptionEngine
 
 
 def main() -> None:
+    """Capture one ready device and print non-image screenshot metadata."""
     backend = AdbDeviceBackend()
     ready = [item for item in backend.list_devices() if item.state is DeviceState.READY]
     if not ready:

@@ -20,10 +20,27 @@ from vphone.device.protocol import DeviceSession
 
 class ActionExecutor:
     def __init__(self, device: DeviceSession):
+        """Bind an executor to one backend-independent device session.
+
+        Args:
+            device: Session that will receive every concrete action.
+        """
         self._device = device
 
     def execute(self, action: Action, *, timeout: float | None = None) -> ActionResult:
-        """Run one action without retrying or judging the resulting screen."""
+        """Run one action without retrying or judging the resulting screen.
+
+        Args:
+            action: Concrete L2 action to dispatch.
+            timeout: Optional override for the L1 primitive timeout.
+
+        Returns:
+            Command outcome; completion does not prove a UI effect.
+
+        Raises:
+            TypeError: If the action or timeout has an invalid type.
+            ValueError: If the timeout is not finite and positive.
+        """
         kind = _kind_of(action)
         if timeout is not None:
             if isinstance(timeout, bool) or not isinstance(timeout, (int, float)):
@@ -59,6 +76,7 @@ class ActionExecutor:
 
 
 def _kind_of(action: Action) -> ActionKind:
+    """Map an L2 action instance to its result kind."""
     if isinstance(action, TapAction):
         return ActionKind.TAP
     if isinstance(action, SwipeAction):

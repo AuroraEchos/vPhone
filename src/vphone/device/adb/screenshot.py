@@ -19,6 +19,19 @@ def capture_screen(
     *,
     timeout: float = 10.0,
 ) -> ScreenFrame:
+    """Capture and verify a PNG screenshot from one device.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        timeout: Maximum screenshot command duration in seconds.
+
+    Returns:
+        Raw PNG bytes with dimensions, hash, and capture metadata.
+
+    Raises:
+        ScreenshotError: If ADB returns empty or invalid PNG data.
+    """
     result = runner.run(("exec-out", "screencap", "-p"), serial=serial, timeout=timeout)
     data = result.stdout
     if not data:
