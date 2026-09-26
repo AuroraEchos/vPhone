@@ -1,3 +1,5 @@
+"""Unit tests for low-level ADB input command construction."""
+
 from __future__ import annotations
 
 import base64
@@ -11,15 +13,18 @@ from vphone.device.models import CommandResult, KeyCode, Point
 
 class FakeRunner:
     def __init__(self):
+        """Start an empty log of simulated ADB commands."""
         self.calls: list[tuple[tuple[str, ...], dict]] = []
 
     def run(self, args, **kwargs):
+        """Record a command and simulate successful ADB output."""
         self.calls.append((tuple(args), kwargs))
         stdout = b"OK (1 test)\n" if "uiautomator" in args else b""
         return CommandResult(tuple(args), 0, stdout, b"", 0.1)
 
 
 def test_tap_builds_input_command() -> None:
+    """Verify tap builds input command."""
     runner = FakeRunner()
 
     result = adb_input.tap(runner, "serial", Point(12, 34))
@@ -29,11 +34,13 @@ def test_tap_builds_input_command() -> None:
 
 
 def test_swipe_validates_duration() -> None:
+    """Verify swipe validates duration."""
     with pytest.raises(InputError, match="between"):
         adb_input.swipe(FakeRunner(), "serial", Point(0, 0), Point(1, 1), duration_ms=0)
 
 
 def test_key_event_accepts_named_key() -> None:
+    """Verify key event accepts named key."""
     runner = FakeRunner()
 
     adb_input.key_event(runner, "serial", KeyCode.BACK)
@@ -42,6 +49,7 @@ def test_key_event_accepts_named_key() -> None:
 
 
 def test_input_text_encodes_spaces() -> None:
+    """Verify input text encodes spaces."""
     runner = FakeRunner()
 
     adb_input.input_text(runner, "serial", "hello phone")
@@ -50,6 +58,7 @@ def test_input_text_encodes_spaces() -> None:
 
 
 def test_input_text_quotes_remote_shell_metacharacters() -> None:
+    """Verify input text quotes remote shell metacharacters."""
     runner = FakeRunner()
 
     adb_input.input_text(runner, "serial", "it's & safe")
@@ -66,6 +75,7 @@ def test_input_text_quotes_remote_shell_metacharacters() -> None:
     ],
 )
 def test_input_text_preserves_literal_percent_s(text: str, commands: list[str]) -> None:
+    """Verify input text preserves literal percent s."""
     runner = FakeRunner()
 
     adb_input.input_text(runner, "serial", text)
@@ -74,6 +84,7 @@ def test_input_text_preserves_literal_percent_s(text: str, commands: list[str]) 
 
 
 def test_input_text_uses_packaged_helper_for_unicode() -> None:
+    """Verify input text uses packaged helper for unicode."""
     runner = FakeRunner()
 
     result = adb_input.input_text(runner, "serial", "你好")
@@ -88,13 +99,17 @@ def test_input_text_uses_packaged_helper_for_unicode() -> None:
 
 
 def test_input_text_rejects_control_characters() -> None:
+    """Verify input text rejects control characters."""
     with pytest.raises(InputError, match="printable"):
         adb_input.input_text(FakeRunner(), "serial", "first\nsecond")
 
 
 def test_input_text_reports_unicode_helper_failure_and_cleans_up() -> None:
+    """Verify input text reports unicode helper failure and cleans up."""
+
     class FailingRunner(FakeRunner):
         def run(self, args, **kwargs):
+            """Simulate a Unicode helper failure while recording cleanup."""
             self.calls.append((tuple(args), kwargs))
             return CommandResult(tuple(args), 0, b"FAILURES!!!\n", b"", 0.1)
 

@@ -15,14 +15,45 @@ from vphone.device.models import DeviceDescriptor, DeviceState
 
 class AdbDeviceBackend:
     def __init__(self, adb_path: str | None = None, *, runner: AdbRunner | None = None):
+        """Create a backend with either an ADB executable path or an injected runner.
+
+        Args:
+            adb_path: Optional path to the ADB executable.
+            runner: Runner to reuse, primarily for testing.
+
+        Raises:
+            ValueError: If both backend construction options are supplied.
+        """
         if adb_path is not None and runner is not None:
             raise ValueError("pass adb_path or runner, not both")
         self._runner = runner or AdbRunner(adb_path)
 
     def list_devices(self, *, timeout: float = 5.0) -> list[DeviceDescriptor]:
+        """Discover devices, including offline and unauthorized entries.
+
+        Args:
+            timeout: Maximum time allowed for the ADB discovery command.
+
+        Returns:
+            Parsed descriptors for devices reported by ADB.
+        """
         return list_devices(self._runner, timeout=timeout)
 
     def open(self, device_id: str, *, timeout: float = 5.0) -> AdbDeviceSession:
+        """Open a session for a currently ready device.
+
+        Args:
+            device_id: Exact ADB serial, with surrounding whitespace ignored.
+            timeout: Maximum time allowed for the discovery command.
+
+        Returns:
+            A session bound to the requested device.
+
+        Raises:
+            DeviceNotFoundError: If ADB does not report the device.
+            DeviceUnauthorizedError: If USB debugging is not authorized.
+            DeviceOfflineError: If the device is not ready.
+        """
         if not isinstance(device_id, str):
             raise TypeError("device_id must be a string")
         device_id = device_id.strip()

@@ -27,6 +27,7 @@ _DEVICE_LOCKS: dict[str, threading.RLock] = {}
 
 
 def _lock_for_device(device_id: str) -> threading.RLock:
+    """Return the shared in-process lock for an ADB serial."""
     with _DEVICE_LOCKS_GUARD:
         lock = _DEVICE_LOCKS.get(device_id)
         if lock is None:
@@ -37,6 +38,12 @@ def _lock_for_device(device_id: str) -> threading.RLock:
 
 class AdbDeviceSession:
     def __init__(self, runner: AdbRunner, descriptor: DeviceDescriptor):
+        """Bind a ready device descriptor to a shared ADB runner.
+
+        Args:
+            runner: Runner used for all commands in this session.
+            descriptor: Descriptor of the device selected by the backend.
+        """
         self._runner = runner
         self.descriptor = descriptor
         self.capabilities = DeviceCapabilities()
@@ -44,6 +51,14 @@ class AdbDeviceSession:
         self._closed = False
 
     def health_check(self, *, timeout: float = 5.0) -> DeviceHealth:
+        """Query whether the selected device is still ready.
+
+        Args:
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            Current readiness and observed device state.
+        """
         with self._lock:
             self._ensure_open()
             result = self._runner.run(
@@ -70,11 +85,28 @@ class AdbDeviceSession:
             )
 
     def capture_screen(self, *, timeout: float = 10.0) -> ScreenFrame:
+        """Capture a verified PNG screenshot from this device.
+
+        Args:
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            The current screen frame.
+        """
         with self._lock:
             self._ensure_open()
             return capture_screen(self._runner, self.descriptor.device_id, timeout=timeout)
 
     def tap(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult:
+        """Tap one screen pixel through the shared runner.
+
+        Args:
+            point: Pixel to tap.
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            Result of the input primitive.
+        """
         with self._lock:
             self._ensure_open()
             return adb_input.tap(self._runner, self.descriptor.device_id, point, timeout=timeout)
@@ -87,6 +119,17 @@ class AdbDeviceSession:
         duration_ms: int = 300,
         timeout: float = 5.0,
     ) -> PrimitiveResult:
+        """Swipe between two screen pixels through the shared runner.
+
+        Args:
+            start: Initial pixel.
+            end: Final pixel.
+            duration_ms: Swipe duration in milliseconds.
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            Result of the input primitive.
+        """
         with self._lock:
             self._ensure_open()
             return adb_input.swipe(
@@ -99,6 +142,15 @@ class AdbDeviceSession:
             )
 
     def key_event(self, key: KeyCode | int, *, timeout: float = 5.0) -> PrimitiveResult:
+        """Send an Android key event to this device.
+
+        Args:
+            key: Named key or numeric Android keycode.
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            Result of the input primitive.
+        """
         with self._lock:
             self._ensure_open()
             return adb_input.key_event(
@@ -106,6 +158,15 @@ class AdbDeviceSession:
             )
 
     def input_text(self, text: str, *, timeout: float = 10.0) -> PrimitiveResult:
+        """Enter text into the currently focused device field.
+
+        Args:
+            text: Printable text to enter.
+            timeout: Overall input timeout budget in seconds.
+
+        Returns:
+            Result of the input primitive.
+        """
         with self._lock:
             self._ensure_open()
             return adb_input.input_text(
@@ -113,10 +174,12 @@ class AdbDeviceSession:
             )
 
     def close(self) -> None:
+        """Mark this session closed; later operations will be rejected."""
         with self._lock:
             self._closed = True
 
     def __enter__(self) -> Self:
+        """Validate and return this session for context-manager use."""
         with self._lock:
             self._ensure_open()
         return self
@@ -127,8 +190,16 @@ class AdbDeviceSession:
         exc: BaseException | None,
         traceback: TracebackType | None,
     ) -> None:
+        """Close the session when leaving a context manager.
+
+        Args:
+            exc_type: Exception class raised in the context, if any.
+            exc: Exception instance raised in the context, if any.
+            traceback: Traceback of the exception, if any.
+        """
         self.close()
 
     def _ensure_open(self) -> None:
+        """Reject operations after the session has been closed."""
         if self._closed:
             raise DeviceClosedError(f"device session is closed: {self.descriptor.device_id}")

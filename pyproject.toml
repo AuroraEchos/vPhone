@@ -9,8 +9,13 @@ description = "Visual Android agent runtime."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "openai>=2,<3",
+    "python-dotenv>=1,<2",
     "pillow>=11,<13",
 ]
+
+[project.scripts]
+vphone = "vphone.main:main"
 
 [project.optional-dependencies]
 dev = [

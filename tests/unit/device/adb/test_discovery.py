@@ -1,8 +1,11 @@
+"""Unit tests for parsing ADB device listings."""
+
 from vphone.device.adb.discovery import parse_devices_output
 from vphone.device.models import ConnectionType, DeviceState
 
 
 def test_parse_devices_output() -> None:
+    """Verify parse devices output."""
     devices = parse_devices_output(
         """List of devices attached
 10AG262J1H003X1 device product:husky model:Pixel_8_Pro device:husky transport_id:1
@@ -23,6 +26,7 @@ emulator-5554 offline transport_id:2
 
 
 def test_parse_devices_output_ignores_daemon_noise() -> None:
+    """Verify parse devices output ignores daemon noise."""
     output = """* daemon not running; starting now at tcp:5037
 * daemon started successfully
 List of devices attached

@@ -1,3 +1,5 @@
+"""Unit tests for ADB device session lifecycle and serialization."""
+
 from __future__ import annotations
 
 import threading
@@ -18,14 +20,17 @@ from vphone.device.models import (
 
 class FakeRunner:
     def run(self, args, **kwargs):
+        """Return a ready-device state for any simulated ADB command."""
         return CommandResult(tuple(args), 0, b"device\n", b"", 0.1)
 
 
 def descriptor() -> DeviceDescriptor:
+    """Build the ready USB descriptor shared by session tests."""
     return DeviceDescriptor("serial", DeviceState.READY, ConnectionType.USB)
 
 
 def test_health_check_reports_ready_device() -> None:
+    """Verify health check reports ready device."""
     session = AdbDeviceSession(FakeRunner(), descriptor())
 
     health = session.health_check()
@@ -35,6 +40,7 @@ def test_health_check_reports_ready_device() -> None:
 
 
 def test_closed_session_rejects_operations() -> None:
+    """Verify closed session rejects operations."""
     session = AdbDeviceSession(FakeRunner(), descriptor())
     session.close()
 
@@ -43,13 +49,17 @@ def test_closed_session_rejects_operations() -> None:
 
 
 def test_sessions_for_same_device_serialize_commands() -> None:
+    """Verify sessions for same device serialize commands."""
+
     class ConcurrentRunner:
         def __init__(self):
+            """Initialize counters for simultaneous command execution."""
             self.guard = threading.Lock()
             self.active = 0
             self.max_active = 0
 
         def run(self, args, **kwargs):
+            """Measure overlapping calls while simulating a slow command."""
             with self.guard:
                 self.active += 1
                 self.max_active = max(self.max_active, self.active)

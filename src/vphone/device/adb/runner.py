@@ -25,6 +25,16 @@ class AdbRunner:
     """Run bounded ADB commands without invoking a local shell."""
 
     def __init__(self, adb_path: str | None = None, *, max_output_bytes: int = 32 * 1024 * 1024):
+        """Resolve ADB and set a per-stream output safety limit.
+
+        Args:
+            adb_path: Explicit executable path, or ``None`` to search ``PATH``.
+            max_output_bytes: Maximum bytes accepted from each output stream.
+
+        Raises:
+            AdbNotFoundError: If no ADB executable can be located.
+            ValueError: If the output limit is not positive.
+        """
         resolved = adb_path or shutil.which("adb")
         if not resolved:
             raise AdbNotFoundError("adb was not found in PATH")
@@ -41,6 +51,21 @@ class AdbRunner:
         timeout: float = 10.0,
         check: bool = True,
     ) -> CommandResult:
+        """Run one bounded ADB command without a local shell.
+
+        Args:
+            args: ADB arguments after the optional device selector.
+            serial: Optional target device serial.
+            timeout: Maximum subprocess duration in seconds.
+            check: Whether a nonzero exit status raises a device error.
+
+        Returns:
+            Command output, exit status, arguments, and elapsed time.
+
+        Raises:
+            DeviceError: If ADB fails, times out, or exceeds the output limit.
+            ValueError: If the timeout, serial, or arguments are invalid.
+        """
         if timeout <= 0:
             raise ValueError("timeout must be positive")
         normalized = self._validate_args(args)
@@ -84,6 +109,7 @@ class AdbRunner:
 
     @staticmethod
     def error_for(result: CommandResult) -> DeviceError:
+        """Classify a failed ADB result into a structured device error."""
         output = (result.stdout + b"\n" + result.stderr).decode("utf-8", errors="replace").strip()
         folded = output.casefold()
         message = output[:1000] or f"adb exited with status {result.returncode}"
@@ -101,6 +127,7 @@ class AdbRunner:
 
     @staticmethod
     def _validate_args(args: Sequence[str]) -> list[str]:
+        """Reject empty, non-string, or NUL-containing ADB arguments."""
         if not args:
             raise ValueError("adb arguments cannot be empty")
         normalized: list[str] = []

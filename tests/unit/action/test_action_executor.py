@@ -17,25 +17,31 @@ from vphone.device import DeviceCommandTimeoutError, KeyCode, Point, PrimitiveRe
 
 class FakeDevice:
     def __init__(self, error: DeviceCommandTimeoutError | None = None) -> None:
+        """Create a device fake with an optional injected command failure."""
         self.calls: list[tuple[str, tuple, dict]] = []
         self.error = error
 
     def _record(self, operation: str, args: tuple, kwargs: dict) -> PrimitiveResult:
+        """Record one requested primitive and optionally raise its failure."""
         self.calls.append((operation, args, kwargs))
         if self.error is not None:
             raise self.error
         return PrimitiveResult(operation, 0.01)
 
     def tap(self, point: Point, **kwargs) -> PrimitiveResult:
+        """Record a tap request."""
         return self._record("tap", (point,), kwargs)
 
     def swipe(self, start: Point, end: Point, **kwargs) -> PrimitiveResult:
+        """Record a swipe request."""
         return self._record("swipe", (start, end), kwargs)
 
     def key_event(self, key: KeyCode | int, **kwargs) -> PrimitiveResult:
+        """Record a key-event request."""
         return self._record("key_event", (key,), kwargs)
 
     def input_text(self, text: str, **kwargs) -> PrimitiveResult:
+        """Record a text-input request."""
         return self._record("input_text", (text,), kwargs)
 
 
@@ -55,6 +61,7 @@ class FakeDevice:
     ],
 )
 def test_executor_dispatches_supported_actions(action, kind, operation, args, kwargs) -> None:
+    """Verify executor dispatches supported actions."""
     device = FakeDevice()
 
     result = ActionExecutor(device).execute(action)
@@ -69,6 +76,7 @@ def test_executor_dispatches_supported_actions(action, kind, operation, args, kw
 
 
 def test_executor_forwards_explicit_timeout() -> None:
+    """Verify executor forwards explicit timeout."""
     device = FakeDevice()
 
     ActionExecutor(device).execute(TapAction(Point(10, 20)), timeout=2.5)
@@ -78,6 +86,7 @@ def test_executor_forwards_explicit_timeout() -> None:
 
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
 def test_executor_rejects_invalid_timeout_before_device_call(timeout: float) -> None:
+    """Verify executor rejects invalid timeout before device call."""
     device = FakeDevice()
 
     with pytest.raises(ValueError, match="finite and positive"):
@@ -87,6 +96,7 @@ def test_executor_rejects_invalid_timeout_before_device_call(timeout: float) -> 
 
 
 def test_executor_returns_device_failure_without_retry() -> None:
+    """Verify executor returns device failure without retry."""
     failure = DeviceCommandTimeoutError("device command timed out")
     device = FakeDevice(error=failure)
 
@@ -100,6 +110,7 @@ def test_executor_returns_device_failure_without_retry() -> None:
 
 
 def test_executor_rejects_unknown_action_before_device_call() -> None:
+    """Verify executor rejects unknown action before device call."""
     device = FakeDevice()
 
     with pytest.raises(TypeError, match="supported L2 action"):

@@ -21,6 +21,7 @@ class TapAction:
     point: Point
 
     def __post_init__(self) -> None:
+        """Require a validated screen point for a tap."""
         if not isinstance(self.point, Point):
             raise TypeError("tap point must be a Point")
 
@@ -32,6 +33,7 @@ class SwipeAction:
     duration_ms: int = 300
 
     def __post_init__(self) -> None:
+        """Validate swipe endpoints and the millisecond duration."""
         if not isinstance(self.start, Point) or not isinstance(self.end, Point):
             raise TypeError("swipe endpoints must be Points")
         if isinstance(self.duration_ms, bool) or not isinstance(self.duration_ms, int):
@@ -45,6 +47,7 @@ class KeyAction:
     key: KeyCode | int
 
     def __post_init__(self) -> None:
+        """Accept a named key or a non-negative numeric keycode."""
         if isinstance(self.key, KeyCode):
             return
         if isinstance(self.key, bool) or not isinstance(self.key, int):
@@ -58,6 +61,7 @@ class TextAction:
     text: str = field(repr=False)
 
     def __post_init__(self) -> None:
+        """Require nonempty, printable text without exposing it in ``repr``."""
         if not isinstance(self.text, str):
             raise TypeError("text must be a string")
         if not self.text:

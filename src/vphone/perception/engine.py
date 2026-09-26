@@ -1,4 +1,4 @@
-"""Capture the current page for a future multimodal planner."""
+"""Capture the current page for the multimodal planner."""
 
 from __future__ import annotations
 
@@ -14,7 +14,18 @@ class PerceptionEngine:
     """L3 delivers screenshots; L4 decides and L2 executes actions."""
 
     def observe(self, device: DeviceSession, *, screen_timeout: float = 10.0) -> PageObservation:
-        """Capture one current screenshot without querying app metadata."""
+        """Capture one current screenshot without querying app metadata.
+
+        Args:
+            device: Device session to observe.
+            screen_timeout: Maximum screenshot capture time in seconds.
+
+        Returns:
+            Observation containing a unique ID and the current screen frame.
+
+        Raises:
+            PerceptionError: If L1 cannot capture the screenshot.
+        """
         try:
             screen = device.capture_screen(timeout=screen_timeout)
         except DeviceError as exc:

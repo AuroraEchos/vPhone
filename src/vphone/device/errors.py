@@ -33,6 +33,12 @@ class DeviceClosedError(DeviceError):
 
 class DeviceCommandError(DeviceError):
     def __init__(self, message: str, *, returncode: int | None = None):
+        """Record an ADB failure and its optional process exit status.
+
+        Args:
+            message: Human-readable failure description.
+            returncode: ADB process exit code, when available.
+        """
         super().__init__(message)
         self.returncode = returncode
 

@@ -62,6 +62,12 @@ class Point:
     y: int
 
     def __post_init__(self) -> None:
+        """Validate non-negative integer pixel coordinates.
+
+        Raises:
+            TypeError: If a coordinate is not an integer.
+            ValueError: If a coordinate is negative.
+        """
         if isinstance(self.x, bool) or isinstance(self.y, bool):
             raise TypeError("coordinates must be integers")
         if not isinstance(self.x, int) or not isinstance(self.y, int):
@@ -78,6 +84,12 @@ class Rect:
     bottom: int
 
     def __post_init__(self) -> None:
+        """Validate integer rectangle bounds and their ordering.
+
+        Raises:
+            TypeError: If a bound is not an integer.
+            ValueError: If right or bottom precedes left or top.
+        """
         values = (self.left, self.top, self.right, self.bottom)
         if any(isinstance(value, bool) or not isinstance(value, int) for value in values):
             raise TypeError("rectangle coordinates must be integers")
@@ -86,10 +98,12 @@ class Rect:
 
     @property
     def width(self) -> int:
+        """Return the horizontal span in pixels."""
         return self.right - self.left
 
     @property
     def height(self) -> int:
+        """Return the vertical span in pixels."""
         return self.bottom - self.top
 
 
@@ -113,6 +127,7 @@ class ScreenFrame:
     duration_seconds: float
 
     def __post_init__(self) -> None:
+        """Validate that the screenshot has bytes, dimensions, and valid duration."""
         if not self.data:
             raise ValueError("screen data cannot be empty")
         if self.width <= 0 or self.height <= 0:
@@ -127,5 +142,6 @@ class PrimitiveResult:
     duration_seconds: float
 
     def __post_init__(self) -> None:
+        """Reject a negative primitive duration."""
         if self.duration_seconds < 0:
             raise ValueError("operation duration cannot be negative")

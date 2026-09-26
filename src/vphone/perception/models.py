@@ -15,5 +15,6 @@ class PageObservation:
     screen: ScreenFrame
 
     def __post_init__(self) -> None:
+        """Reject an observation without a tracking identifier."""
         if not self.observation_id:
             raise ValueError("observation_id cannot be empty")
