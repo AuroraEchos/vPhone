@@ -55,13 +55,11 @@ ActionExecutor：执行一个 L2 动作
 
 ### 2.3 控制器返回值
 
-`RunResult` 包含 `status`、`message`、`steps` 和 `final_observation`。`steps` 每项记录所依据的观测 ID / 截图哈希、已派发动作和 L2 结果，便于审查决策链；`RunResult` 自身不负责持久化，CLI 的轨迹记录器另行保存截图。`status=finished` 仅表示模型根据最后一张截图宣称完成，不是独立的业务证明。其它状态为 `stopped`、`needs_confirmation`、`action_limit`、`time_limit`、`error`。
+`RunResult` 包含 `status`、`message`、`steps` 和 `final_observation`。`steps` 每项记录所依据的观测 ID / 截图哈希、已派发动作和 L2 结果，并只在本次运行的内存中保留；CLI 不保存截图或轨迹。`status=finished` 仅表示模型根据最后一张截图宣称完成，不是独立的业务证明。其它状态为 `stopped`、`needs_confirmation`、`action_limit`、`time_limit`、`error`。
 
-### 2.4 本地任务轨迹
+### 2.4 运行时步骤历史
 
-CLI 为每次任务在项目根目录创建 `traces/<UTC 时间戳>-<随机 ID>/`。`trajectory.json` 使用版本化结构，包含任务文本、模型 ID、设备 ID、开始/结束时间、最终状态与消息、动作数量，以及按顺序排列的 `turns`。每轮保存观测 ID、截图相对路径、SHA-256、尺寸和采集耗时；随后记录已验证的模型决策及实际派发的 L2 动作结果。截图单独保存在 `screenshots/0001.png` 等文件中，避免把大块 base64 放进 JSON。若模型请求失败，最新截图对应轮次的 `decision` 可以为 `null`。当前不记录模型内部推理或格式修复前的原始响应。
-
-轨迹在开始、每次观测、决策、执行以及结束时原子更新 JSON；正常停止、达到预算、设备错误和用户中断都会写入终态。轨迹不保存 API Key，但**会保存原始截图、任务文本、模型答案及文本输入内容**，属于敏感本地数据。`traces/` 不纳入 Git；共享前需人工检查或脱敏。
+规划器在内存中保留本次任务的动作步骤，供下一轮模型请求使用。进程结束后不会写入 `trajectory.json` 或逐轮截图；此前生成的本地 `traces/` 文件不会自动删除。
 
 ## 3. 控制流程与失败语义
 
@@ -83,7 +81,6 @@ CLI 为每次任务在项目根目录创建 `traces/<UTC 时间戳>-<随机 ID>/
 | [`provider.py`](../../src/vphone/planner/provider.py) | 发送 PNG 截图、接收一个工具调用 |
 | [`engine.py`](../../src/vphone/planner/engine.py) | 观测—决策—派发闭环与预算 |
 | [`main.py`](../../src/vphone/main.py) | 接收任务文本的命令行入口 |
-| [`trajectory.py`](../../src/vphone/trajectory.py) | 逐轮 JSON 轨迹与截图持久化 |
 | [`scripts/probe_coordinates.py`](../../scripts/probe_coordinates.py) | 无触碰合成图坐标探针 |
 
 ```bash

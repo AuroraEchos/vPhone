@@ -11,12 +11,10 @@ from vphone.action.models import ActionKind, KeyAction, SwipeAction, TapAction, 
 from vphone.device.protocol import DeviceSession
 from vphone.perception import PerceptionEngine
 from vphone.perception.errors import PerceptionError
-from vphone.perception.models import PageObservation
 from vphone.planner.errors import PlannerError
 from vphone.planner.models import (
     ActionDecision,
     ConfirmationDecision,
-    Decision,
     FinishDecision,
     RunResult,
     RunStatus,
@@ -35,8 +33,6 @@ class PlannerEngine:
         max_seconds: float = 600.0,
         settle_seconds: float = 0.5,
         allowed_kinds: frozenset[ActionKind] | None = None,
-        on_observation: Callable[[PageObservation], None] | None = None,
-        on_decision: Callable[[Decision], None] | None = None,
         on_step: Callable[[StepRecord], None] | None = None,
     ):
         """Configure a bounded visual decision loop.
@@ -47,8 +43,6 @@ class PlannerEngine:
             max_seconds: Overall run budget in seconds.
             settle_seconds: Wait after each completed action before re-observation.
             allowed_kinds: Permitted L2 action kinds, or all kinds by default.
-            on_observation: Optional callback after each screenshot capture.
-            on_decision: Optional callback after each model decision.
             on_step: Optional callback after each dispatched action.
 
         Raises:
@@ -72,8 +66,6 @@ class PlannerEngine:
         self._max_seconds = max_seconds
         self._settle_seconds = settle_seconds
         self._allowed_kinds = frozenset(ActionKind) if allowed_kinds is None else allowed_kinds
-        self._on_observation = on_observation
-        self._on_decision = on_decision
         self._on_step = on_step
 
     def run(self, task: str, device: DeviceSession) -> RunResult:
@@ -84,7 +76,7 @@ class PlannerEngine:
             device: Session shared by perception and action execution.
 
         Returns:
-            Terminal status, action trace, and last observed screenshot.
+            Terminal status, in-memory action history, and last observed screenshot.
 
         Raises:
             ValueError: If the task is empty or not text.
@@ -102,11 +94,7 @@ class PlannerEngine:
                 return RunResult(RunStatus.TIME_LIMIT, "time limit reached", tuple(steps), latest)
             try:
                 latest = perception.observe(device)
-                if self._on_observation is not None:
-                    self._on_observation(latest)
                 decision = self._model.decide(task, latest, tuple(steps))
-                if self._on_decision is not None:
-                    self._on_decision(decision)
             except (PerceptionError, PlannerError) as exc:
                 return RunResult(RunStatus.ERROR, str(exc), tuple(steps), latest)
             if time.monotonic() - started >= self._max_seconds:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import tomllib
 from contextlib import nullcontext
 from pathlib import Path
@@ -27,7 +26,6 @@ def test_main_wires_task_config_device_and_planner(
 ) -> None:
     """Exercise the complete entry-point wiring without a phone or network."""
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr(cli, "_trajectory_root", lambda: tmp_path / "traces")
     monkeypatch.setattr(cli, "find_dotenv", lambda **kwargs: "")
     monkeypatch.setattr(cli, "load_dotenv", lambda path: None)
     monkeypatch.setenv("API_KEY", "test-key")
@@ -86,12 +84,11 @@ def test_main_wires_task_config_device_and_planner(
     assert "allowed_kinds" not in observed["options"]
     output = capsys.readouterr().out
     assert "status=finished; actions=0" in output
-    trace_file = next((tmp_path / "traces").glob("*/trajectory.json"))
-    assert f"trajectory={trace_file}" in output
-    trace = json.loads(trace_file.read_text(encoding="utf-8"))
-    assert trace["task"] == "查看当前电量"
-    assert trace["status"] == "finished"
-    assert trace["device_id"] == "test-device"
+    assert "trajectory=" not in output
+    assert not (tmp_path / "traces").exists()
+    assert "on_observation" not in observed["options"]
+    assert "on_decision" not in observed["options"]
+    assert observed["options"]["on_step"] is cli._report_step
 
 
 def test_main_requires_task(capsys: pytest.CaptureFixture[str]) -> None:
@@ -102,24 +99,20 @@ def test_main_requires_task(capsys: pytest.CaptureFixture[str]) -> None:
     assert "task" in capsys.readouterr().err
 
 
-def test_configuration_failure_is_saved_as_trajectory(
+def test_configuration_failure_does_not_create_trace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    """Write an error trace even when a task cannot reach the device."""
+    """A configuration error exits without creating task artifacts."""
+    monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "find_dotenv", lambda **kwargs: "")
     monkeypatch.setattr(cli, "load_dotenv", lambda path: None)
-    monkeypatch.setattr(cli, "_trajectory_root", lambda: tmp_path / "traces")
     monkeypatch.setenv("API_KEY", "")
     monkeypatch.setenv("VPHONE_MODEL_ID", "vision-test")
 
     with pytest.raises(SystemExit, match="Invalid model or runtime configuration"):
         cli.main(["查看电量"])
 
-    trace_file = next((tmp_path / "traces").glob("*/trajectory.json"))
-    trace = json.loads(trace_file.read_text(encoding="utf-8"))
-    assert trace["status"] == "error"
-    assert trace["task"] == "查看电量"
-    assert trace["turns"] == []
+    assert not (tmp_path / "traces").exists()
 
 
 def test_progress_output_hides_text_input(capsys: pytest.CaptureFixture[str]) -> None:

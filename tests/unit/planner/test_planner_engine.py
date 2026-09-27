@@ -71,22 +71,16 @@ def test_one_action_then_fresh_observation_and_finish() -> None:
     assert result.final_observation.screen.sha256 == "2" * 64
 
 
-def test_callbacks_follow_observation_decision_execution_order() -> None:
-    """Expose each turn to trajectory recording in chronological order."""
-    events: list[str] = []
+def test_step_callback_reports_executed_action() -> None:
+    """Report an action result once, while keeping the planner's in-memory history."""
+    reported = []
     model = FakeModel([ActionDecision(TapAction(Point(30, 40))), FinishDecision("done")])
-    planner = PlannerEngine(
-        model,
-        settle_seconds=0,
-        on_observation=lambda observation: events.append("observation"),
-        on_decision=lambda decision: events.append("decision"),
-        on_step=lambda step: events.append("execution"),
-    )
+    planner = PlannerEngine(model, settle_seconds=0, on_step=reported.append)
 
     result = planner.run("Find page", FakeDevice())
 
     assert result.status is RunStatus.FINISHED
-    assert events == ["observation", "decision", "execution", "observation", "decision"]
+    assert reported == list(result.steps)
 
 
 def test_action_limit_stops_before_extra_execution() -> None:
