@@ -2,16 +2,29 @@
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 
 import pytest
 
+from vphone.action import ActionKind, ActionResult, TapAction
 from vphone.device import Point, ScreenFrame
 from vphone.perception import PageObservation
 from vphone.planner.config import ModelConfig
 from vphone.planner.errors import InvalidDecisionError
-from vphone.planner.models import ActionDecision
+from vphone.planner.models import ActionDecision, DecisionTrace, StepRecord
 from vphone.planner.provider import OpenAICompatibleDecisionModel
+
+
+def _args(**values: object) -> str:
+    """Build a valid task-aware tool call for provider tests."""
+    return json.dumps(
+        {
+            "screen_summary": "Settings screen with a Battery entry",
+            "decision_reason": "Open Battery to answer the task",
+            **values,
+        }
+    )
 
 
 class FakeCompletions:
@@ -77,7 +90,7 @@ def _observation():
 
 def test_provider_sends_png_as_original_and_returns_validated_action() -> None:
     """Verify provider sends png as original and returns validated action."""
-    model, completions = _model([("tap", '{"x":99,"y":199}')])
+    model, completions = _model([("tap", _args(x=99, y=199))])
 
     decision = model.decide("Tap icon", _observation(), ())
 
@@ -90,14 +103,22 @@ def test_provider_sends_png_as_original_and_returns_validated_action() -> None:
         item for item in completions.kwargs["tools"] if item["function"]["name"] == "tap"
     )
     assert tap_tool["function"]["parameters"]["properties"]["y"]["maximum"] == 199
+    assert tap_tool["function"]["parameters"]["required"] == [
+        "screen_summary",
+        "decision_reason",
+        "x",
+        "y",
+    ]
     image = completions.kwargs["messages"][1]["content"][1]["image_url"]
     assert image["detail"] == "original"
     assert image["url"].startswith("data:image/png;base64,")
+    instructions = completions.kwargs["messages"][0]["content"]
+    assert "do not repeat the same action" in instructions
 
 
 def test_provider_rejects_multiple_tool_calls() -> None:
     """Verify provider rejects multiple tool calls."""
-    model, _ = _model([("tap", '{"x":1,"y":2}'), ("tap", '{"x":3,"y":4}')])
+    model, _ = _model([("tap", _args(x=1, y=2)), ("tap", _args(x=3, y=4))])
 
     with pytest.raises(InvalidDecisionError, match="exactly one"):
         model.decide("Tap icon", _observation(), ())
@@ -105,7 +126,7 @@ def test_provider_rejects_multiple_tool_calls() -> None:
 
 def test_provider_sends_configured_optional_reasoning_effort() -> None:
     """Include the optional reasoning parameter only when configured."""
-    completions = FakeCompletions([("tap", '{"x":1,"y":2}')])
+    completions = FakeCompletions([("tap", _args(x=1, y=2))])
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
     config = ModelConfig("test-key", "https://example.test", "another-model", 20, 512, "medium")
     model = OpenAICompatibleDecisionModel(config, client=client)
@@ -145,7 +166,7 @@ def test_provider_repairs_missing_field_once_without_action() -> None:
     completions = SequenceCompletions(
         [
             [("tap", '{"x":50}')],
-            [("tap", '{"x":50,"y":70}')],
+            [("tap", _args(x=50, y=70))],
         ]
     )
     client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
@@ -158,3 +179,29 @@ def test_provider_repairs_missing_field_once_without_action() -> None:
     assert decision.action.point == Point(50, 70)
     assert len(completions.prompts) == 2
     assert "previous proposal was rejected" in completions.prompts[1]
+
+
+def test_provider_sends_task_aware_trajectory_without_old_coordinates() -> None:
+    """Use prior screen meaning and decision intent instead of raw tap coordinates."""
+    model, completions = _model([("finish", _args(answer="Battery 80%"))])
+    trace = DecisionTrace(
+        "The Android home screen is visible",
+        "Open Settings as the first step toward checking the battery",
+    )
+    step = StepRecord(
+        "old-observation",
+        "b" * 64,
+        TapAction(Point(987, 654)),
+        ActionResult(ActionKind.TAP, 0.1),
+        trace,
+    )
+
+    model.decide("Check battery", _observation(), (step,))
+
+    prompt = completions.kwargs["messages"][1]["content"][0]["text"]
+    assert "Task-aware trajectory" in prompt
+    assert trace.screen_summary in prompt
+    assert trace.decision_reason in prompt
+    assert "Action: tap" in prompt
+    assert "987" not in prompt
+    assert "654" not in prompt

@@ -11,7 +11,7 @@ import pytest
 
 import vphone.main as cli
 from vphone.action import ActionKind, ActionResult, TextAction
-from vphone.planner.models import RunResult, RunStatus, StepRecord
+from vphone.planner.models import DecisionTrace, RunResult, RunStatus, StepRecord
 
 
 def test_console_entry_point_targets_main() -> None:
@@ -118,7 +118,11 @@ def test_configuration_failure_does_not_create_trace(
 def test_progress_output_hides_text_input(capsys: pytest.CaptureFixture[str]) -> None:
     """Never print the contents of a text action in progress logs."""
     step = StepRecord(
-        "obs", "a" * 64, TextAction("private value"), ActionResult(ActionKind.TEXT, 0.1)
+        "obs",
+        "a" * 64,
+        TextAction("private value"),
+        ActionResult(ActionKind.TEXT, 0.1),
+        DecisionTrace("A text field is focused", "Enter the requested value"),
     )
     cli._report_step(step)
     output = capsys.readouterr().out

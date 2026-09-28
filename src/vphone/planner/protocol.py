@@ -17,7 +17,7 @@ class DecisionModel(Protocol):
         Args:
             task: User's natural-language objective.
             observation: Fresh screenshot observation.
-            history: Prior dispatched actions and their device outcomes.
+            history: Prior task-aware decisions, actions, and device outcomes.
 
         Returns:
             One action, finish, stop, or confirmation decision.

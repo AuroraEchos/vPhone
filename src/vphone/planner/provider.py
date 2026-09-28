@@ -18,8 +18,15 @@ The screenshot is the only source of current page truth. It is the FULL image, n
 For tap/swipe, x and y are INTEGER PIXEL coordinates in the full screenshot.
 Use the provided screenshot width and height to locate targets.
 Call exactly ONE function per response. Do not return plain text or multiple calls.
+Every function call must include a concise screen_summary grounded in the current screenshot
+and a concise decision_reason that connects the decision to the task and prior trajectory.
+Do not copy passwords, tokens, or other sensitive values into either trajectory field.
+Treat prior trajectory as past context only; the current screenshot is authoritative.
 After an action, a new screenshot will be captured and you will decide again.
 Do not assume a prior action changed the screen; inspect the current screenshot.
+Use the trajectory to understand why you reached the current screen. If the current screenshot
+shows that the latest attempt did not achieve its stated purpose, do not repeat the same action
+for the same reason; choose a different visible strategy or stop if none is justified.
 Use finish only if the current screenshot visibly supports your answer.
 If uncertain, call stop. Before sending, deleting, purchasing or another consequential
 action, call request_confirmation. Never invent controls or invisible page content.
@@ -27,12 +34,12 @@ action, call request_confirmation. Never invent controls or invisible page conte
 
 
 def _history_line(index: int, step: StepRecord) -> str:
-    """Summarize one action without exposing input text or screenshot bytes."""
+    """Render one task-aware trajectory entry without sensitive action details."""
     action = step.action
     if isinstance(action, TapAction):
-        description = f"tap({action.point.x},{action.point.y})"
+        description = "tap"
     elif isinstance(action, SwipeAction):
-        description = f"swipe({action.start.x},{action.start.y} -> {action.end.x},{action.end.y})"
+        description = "swipe"
     elif isinstance(action, KeyAction):
         description = (
             f"press_key({action.key.name})" if hasattr(action.key, "name") else "press_key"
@@ -42,11 +49,15 @@ def _history_line(index: int, step: StepRecord) -> str:
     else:
         description = "unknown_action"
     outcome = "device command completed" if step.result.completed else "device command failed"
-    return f"{index}. {description}: {outcome}; UI effect not verified"
+    return (
+        f"{index}. Saw: {step.trace.screen_summary} "
+        f"Decision: {step.trace.decision_reason} "
+        f"Action: {description}; result: {outcome}; UI effect was not verified at that time"
+    )
 
 
 class OpenAICompatibleDecisionModel:
-    """One fresh screenshot and a compact action history per stateless request."""
+    """One fresh screenshot and a task-aware trajectory per stateless request."""
 
     def __init__(self, config: ModelConfig, *, client: OpenAI | None = None):
         """Configure a multimodal Chat Completions client.
@@ -73,7 +84,7 @@ class OpenAICompatibleDecisionModel:
         Args:
             task: User objective to send alongside the screenshot.
             observation: Current screenshot and its metadata.
-            history: Prior actions summarized without screenshot bytes.
+            history: Prior screen interpretations, decisions, actions, and outcomes.
 
         Returns:
             A validated planner decision; this method never executes it.
@@ -93,7 +104,7 @@ class OpenAICompatibleDecisionModel:
         prompt = (
             f"Task: {task}\n"
             f"Current full screenshot: {screen.width}x{screen.height} pixels.\n"
-            f"Previous actions (not proof of UI success):\n{history_text}\n"
+            f"Task-aware trajectory (past context, not proof of current UI):\n{history_text}\n"
             "Choose exactly one next function using this CURRENT screenshot. "
             f"Coordinates must be screenshot pixels: x=0..{screen.width - 1}, "
             f"y=0..{screen.height - 1}."
