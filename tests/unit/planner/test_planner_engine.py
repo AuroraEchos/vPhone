@@ -9,9 +9,12 @@ from vphone.planner.errors import InvalidDecisionError
 from vphone.planner.models import (
     ActionDecision,
     ConfirmationDecision,
+    DecisionTrace,
     FinishDecision,
     RunStatus,
 )
+
+TRACE = DecisionTrace("A task-relevant screen", "This decision advances the task")
 
 
 class FakeDevice:
@@ -57,7 +60,9 @@ class FakeModel:
 def test_one_action_then_fresh_observation_and_finish() -> None:
     """Verify one action then fresh observation and finish."""
     device = FakeDevice()
-    model = FakeModel([ActionDecision(TapAction(Point(30, 40))), FinishDecision("Battery 80%")])
+    model = FakeModel(
+        [ActionDecision(TapAction(Point(30, 40)), TRACE), FinishDecision("Battery 80%", TRACE)]
+    )
 
     result = PlannerEngine(model, settle_seconds=0).run("Find battery", device)
 
@@ -68,13 +73,16 @@ def test_one_action_then_fresh_observation_and_finish() -> None:
     assert [item[1] for item in model.seen] == [0, 1]
     assert model.seen[0][0] != model.seen[1][0]
     assert result.steps[0].screen_sha256 == "1" * 64
+    assert result.steps[0].trace == TRACE
     assert result.final_observation.screen.sha256 == "2" * 64
 
 
 def test_step_callback_reports_executed_action() -> None:
     """Report an action result once, while keeping the planner's in-memory history."""
     reported = []
-    model = FakeModel([ActionDecision(TapAction(Point(30, 40))), FinishDecision("done")])
+    model = FakeModel(
+        [ActionDecision(TapAction(Point(30, 40)), TRACE), FinishDecision("done", TRACE)]
+    )
     planner = PlannerEngine(model, settle_seconds=0, on_step=reported.append)
 
     result = planner.run("Find page", FakeDevice())
@@ -86,7 +94,7 @@ def test_step_callback_reports_executed_action() -> None:
 def test_action_limit_stops_before_extra_execution() -> None:
     """Verify action limit stops before extra execution."""
     device = FakeDevice()
-    proposal = ActionDecision(TapAction(Point(30, 40)))
+    proposal = ActionDecision(TapAction(Point(30, 40)), TRACE)
     model = FakeModel([proposal, proposal])
 
     result = PlannerEngine(model, max_actions=1, settle_seconds=0).run("Find battery", device)
@@ -99,7 +107,7 @@ def test_action_limit_stops_before_extra_execution() -> None:
 def test_disallowed_action_does_not_reach_device() -> None:
     """Verify disallowed action does not reach device."""
     device = FakeDevice()
-    model = FakeModel([ActionDecision(TapAction(Point(30, 40)))])
+    model = FakeModel([ActionDecision(TapAction(Point(30, 40)), TRACE)])
 
     result = PlannerEngine(model, allowed_kinds=frozenset({ActionKind.KEY}), settle_seconds=0).run(
         "Find battery", device
@@ -124,7 +132,7 @@ def test_invalid_model_decision_stops_without_action() -> None:
 def test_confirmation_pauses_without_device_action() -> None:
     """Verify confirmation pauses without device action."""
     device = FakeDevice()
-    model = FakeModel([ConfirmationDecision("Proceed with a consequential step?")])
+    model = FakeModel([ConfirmationDecision("Proceed with a consequential step?", TRACE)])
 
     result = PlannerEngine(model, settle_seconds=0).run("Do something", device)
 

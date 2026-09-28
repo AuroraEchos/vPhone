@@ -128,7 +128,13 @@ class PlannerEngine:
             if kind not in self._allowed_kinds:
                 return RunResult(RunStatus.STOPPED, "action kind not allowed", tuple(steps), latest)
             outcome = executor.execute(action)
-            record = StepRecord(latest.observation_id, latest.screen.sha256, action, outcome)
+            record = StepRecord(
+                latest.observation_id,
+                latest.screen.sha256,
+                action,
+                outcome,
+                decision.trace,
+            )
             steps.append(record)
             if self._on_step is not None:
                 self._on_step(record)

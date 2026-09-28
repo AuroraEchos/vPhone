@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
 from vphone.action.models import Action, ActionResult
@@ -10,23 +10,48 @@ from vphone.perception.models import PageObservation
 
 
 @dataclass(frozen=True, slots=True)
+class DecisionTrace:
+    """Task-relevant interpretation behind one model decision."""
+
+    screen_summary: str = field(repr=False)
+    decision_reason: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        """Keep trajectory text concise, printable, and safe for one-line prompts."""
+        for field_name in ("screen_summary", "decision_reason"):
+            value = getattr(self, field_name)
+            if not isinstance(value, str):
+                raise TypeError(f"{field_name} must be text")
+            normalized = value.strip()
+            if not normalized or len(value) > 1000 or not normalized.isprintable():
+                raise ValueError(
+                    f"{field_name} must be non-empty printable text up to 1000 characters"
+                )
+            object.__setattr__(self, field_name, normalized)
+
+
+@dataclass(frozen=True, slots=True)
 class ActionDecision:
     action: Action
+    trace: DecisionTrace
 
 
 @dataclass(frozen=True, slots=True)
 class FinishDecision:
     answer: str
+    trace: DecisionTrace
 
 
 @dataclass(frozen=True, slots=True)
 class StopDecision:
     reason: str
+    trace: DecisionTrace
 
 
 @dataclass(frozen=True, slots=True)
 class ConfirmationDecision:
     question: str
+    trace: DecisionTrace
 
 
 Decision = ActionDecision | FinishDecision | StopDecision | ConfirmationDecision
@@ -38,6 +63,7 @@ class StepRecord:
     screen_sha256: str
     action: Action
     result: ActionResult
+    trace: DecisionTrace
 
 
 class RunStatus(StrEnum):

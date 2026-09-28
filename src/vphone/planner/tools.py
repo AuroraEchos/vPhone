@@ -13,13 +13,37 @@ from vphone.planner.models import (
     ActionDecision,
     ConfirmationDecision,
     Decision,
+    DecisionTrace,
     FinishDecision,
     StopDecision,
 )
 
+_TRACE_PROPERTIES = {
+    "screen_summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000,
+        "description": (
+            "Concise single-line description of the current screen and only the visible "
+            "details relevant to the task. Do not include passwords, tokens, or other secrets."
+        ),
+    },
+    "decision_reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 1000,
+        "description": (
+            "Concise single-line explanation of why this decision is the appropriate next "
+            "step for the task from the current screen. Do not repeat passwords, tokens, "
+            "or other sensitive values."
+        ),
+    },
+}
+
 
 def _tool(name: str, description: str, properties: dict[str, Any]) -> dict[str, Any]:
-    """Build one function tool definition from required JSON properties."""
+    """Build one function tool with required task-aware trace fields."""
+    all_properties = {**_TRACE_PROPERTIES, **properties}
     return {
         "type": "function",
         "function": {
@@ -27,8 +51,8 @@ def _tool(name: str, description: str, properties: dict[str, Any]) -> dict[str, 
             "description": description,
             "parameters": {
                 "type": "object",
-                "properties": properties,
-                "required": list(properties),
+                "properties": all_properties,
+                "required": list(all_properties),
                 "additionalProperties": False,
             },
         },
@@ -112,6 +136,7 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
     if not isinstance(values, dict):
         raise InvalidDecisionError("tool arguments must be an object")
 
+    trace_fields = {"screen_summary", "decision_reason"}
     expected = {
         "tap": {"x", "y"},
         "swipe": {"start_x", "start_y", "end_x", "end_y", "duration_ms"},
@@ -121,14 +146,19 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         "stop": {"reason"},
         "request_confirmation": {"question"},
     }
-    if name not in expected or values.keys() != expected[name]:
+    if name not in expected or values.keys() != expected[name] | trace_fields:
         raise InvalidDecisionError(
             f"unknown tool or invalid argument fields: tool={name[:40]}, "
             f"fields={sorted(str(key)[:40] for key in values)}"
         )
 
+    try:
+        trace = DecisionTrace(values["screen_summary"], values["decision_reason"])
+    except (TypeError, ValueError) as exc:
+        raise InvalidDecisionError(str(exc)) from exc
+
     if name == "tap":
-        return ActionDecision(TapAction(to_screen_point(values["x"], values["y"], screen)))
+        return ActionDecision(TapAction(to_screen_point(values["x"], values["y"], screen)), trace)
     if name == "swipe":
         duration = values["duration_ms"]
         if type(duration) is not int or not 100 <= duration <= 2000:
@@ -138,13 +168,14 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
                 start=to_screen_point(values["start_x"], values["start_y"], screen),
                 end=to_screen_point(values["end_x"], values["end_y"], screen),
                 duration_ms=duration,
-            )
+            ),
+            trace,
         )
     if name == "press_key":
         key = values["key"]
         if not isinstance(key, str) or key not in {"BACK", "HOME", "ENTER", "APP_SWITCH"}:
             raise InvalidDecisionError("unsupported key")
-        return ActionDecision(KeyAction(KeyCode[key]))
+        return ActionDecision(KeyAction(KeyCode[key]), trace)
 
     field = {
         "input_text": "text",
@@ -158,9 +189,9 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
     if name == "input_text":
         if not value.isprintable():
             raise InvalidDecisionError("input text must be printable")
-        return ActionDecision(TextAction(value))
+        return ActionDecision(TextAction(value), trace)
     if name == "finish":
-        return FinishDecision(value)
+        return FinishDecision(value, trace)
     if name == "stop":
-        return StopDecision(value)
-    return ConfirmationDecision(value)
+        return StopDecision(value, trace)
+    return ConfirmationDecision(value, trace)
