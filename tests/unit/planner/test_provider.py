@@ -114,6 +114,8 @@ def test_provider_sends_png_as_original_and_returns_validated_action() -> None:
     assert image["url"].startswith("data:image/png;base64,")
     instructions = completions.kwargs["messages"][0]["content"]
     assert "do not repeat the same action" in instructions
+    assert "several horizontally paged screens" in instructions
+    assert "instead of assuming that a vertical swipe opens an app drawer" in instructions
 
 
 def test_provider_rejects_multiple_tool_calls() -> None:
