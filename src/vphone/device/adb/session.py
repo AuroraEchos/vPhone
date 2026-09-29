@@ -157,6 +157,12 @@ class AdbDeviceSession:
                 self._runner, self.descriptor.device_id, key, timeout=timeout
             )
 
+    def _prepare_text_input(self, *, timeout: float = 120.0) -> None:
+        """Install or update the input helper before text actions begin."""
+        with self._lock:
+            self._ensure_open()
+            adb_input.prepare_text_input(self._runner, self.descriptor.device_id, timeout=timeout)
+
     def input_text(self, text: str, *, timeout: float = 10.0) -> PrimitiveResult:
         """Enter text into the currently focused device field.
 

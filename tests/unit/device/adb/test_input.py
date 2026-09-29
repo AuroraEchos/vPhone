@@ -12,14 +12,25 @@ from vphone.device.models import CommandResult, KeyCode, Point
 
 
 class FakeRunner:
-    def __init__(self):
+    def __init__(self, *, installed: bool = True, broadcast: bytes | None = None):
         """Start an empty log of simulated ADB commands."""
         self.calls: list[tuple[tuple[str, ...], dict]] = []
+        self.installed = installed
+        self.broadcast = broadcast or b'Broadcast completed: result=1, data="committed"\n'
 
     def run(self, args, **kwargs):
         """Record a command and simulate successful ADB output."""
         self.calls.append((tuple(args), kwargs))
-        stdout = b"OK (1 test)\n" if "uiautomator" in args else b""
+        if args[0] == "shell" and "settings get" in args[1]:
+            stdout = b"com.example.ime/.Keyboard\n"
+            if self.installed:
+                stdout += b"package:dev.vphone.input versionCode:3\n"
+        elif args[0] == "shell" and "cmd package list" in args[1]:
+            stdout = b"package:dev.vphone.input versionCode:3\n" if self.installed else b""
+        elif args[:3] == ("shell", "am", "broadcast"):
+            stdout = self.broadcast
+        else:
+            stdout = b"Success\n" if args[0] == "install" else b""
         return CommandResult(tuple(args), 0, stdout, b"", 0.1)
 
 
@@ -48,74 +59,90 @@ def test_key_event_accepts_named_key() -> None:
     assert runner.calls[0][0] == ("shell", "input", "keyevent", "4")
 
 
-def test_input_text_encodes_spaces() -> None:
-    """Verify input text encodes spaces."""
+@pytest.mark.parametrize("text", ["hello phone", "你好", "it's & safe", "vphone%s42"])
+def test_input_text_commits_all_text_through_the_ime(text: str) -> None:
+    """Verify every supported character set uses the same editor protocol."""
     runner = FakeRunner()
 
-    adb_input.input_text(runner, "serial", "hello phone")
-
-    assert runner.calls[0][0] == ("shell", "input text hello%sphone")
-
-
-def test_input_text_quotes_remote_shell_metacharacters() -> None:
-    """Verify input text quotes remote shell metacharacters."""
-    runner = FakeRunner()
-
-    adb_input.input_text(runner, "serial", "it's & safe")
-
-    assert runner.calls[0][0] == ("shell", "input text 'it'\"'\"'s%s&%ssafe'")
-
-
-@pytest.mark.parametrize(
-    ("text", "commands"),
-    [
-        ("vphone%s42", ["input text vphone%", "input text s42"]),
-        ("%s%s", ["input text %", "input text s%", "input text s"]),
-        ("100% safe", ["input text 100%%ssafe"]),
-    ],
-)
-def test_input_text_preserves_literal_percent_s(text: str, commands: list[str]) -> None:
-    """Verify input text preserves literal percent s."""
-    runner = FakeRunner()
-
-    adb_input.input_text(runner, "serial", text)
-
-    assert [call[0] for call in runner.calls] == [("shell", command) for command in commands]
-
-
-def test_input_text_uses_packaged_helper_for_unicode() -> None:
-    """Verify input text uses packaged helper for unicode."""
-    runner = FakeRunner()
-
-    result = adb_input.input_text(runner, "serial", "你好")
+    result = adb_input.input_text(runner, "serial", text)
 
     assert result.operation == "input_text"
-    assert runner.calls[0][0][0] == "push"
-    command = runner.calls[1][0]
-    assert command[:3] == ("shell", "uiautomator", "runtest")
-    encoded = command[command.index("text_base64") + 1]
-    assert base64.b64decode(encoded).decode("utf-8") == "你好"
-    assert runner.calls[2][0][:3] == ("shell", "rm", "-f")
+    broadcast = next(
+        call[0] for call in runner.calls if call[0][:3] == ("shell", "am", "broadcast")
+    )
+    encoded = broadcast[broadcast.index("text_base64") + 1]
+    assert base64.b64decode(encoded).decode("utf-8") == text
+    assert not any("uiautomator" in call[0] for call in runner.calls)
+    assert not any(call[0][:3] == ("shell", "input", "text") for call in runner.calls)
+
+
+def test_input_text_selects_and_restores_the_previous_ime() -> None:
+    """Verify the helper is enabled only around the acknowledged commit."""
+    runner = FakeRunner()
+
+    adb_input.input_text(runner, "serial", "hello")
+
+    commands = [call[0] for call in runner.calls]
+    assert "ime enable dev.vphone.input/.VPhoneInputMethodService" in commands[1][1]
+    assert "ime set dev.vphone.input/.VPhoneInputMethodService" in commands[1][1]
+    assert commands[2][:3] == ("shell", "am", "broadcast")
+    assert "ime set com.example.ime/.Keyboard" in commands[3][1]
+    assert "ime disable dev.vphone.input/.VPhoneInputMethodService" in commands[3][1]
+
+
+def test_input_text_requires_the_session_to_be_prepared() -> None:
+    """Verify deployment cannot unexpectedly replace an already-focused screen."""
+    runner = FakeRunner(installed=False)
+
+    with pytest.raises(InputError, match="not prepared"):
+        adb_input.input_text(runner, "serial", "hello")
+
+    assert not any(call[0][0] == "install" for call in runner.calls)
+
+
+def test_prepare_text_input_installs_the_packaged_ime_when_missing() -> None:
+    """Verify session setup deploys the self-contained helper APK."""
+    runner = FakeRunner(installed=False)
+
+    adb_input.prepare_text_input(runner, "serial")
+
+    install = runner.calls[1][0]
+    assert install[:3] == ("install", "--no-streaming", "-r")
+    assert install[3].endswith("vphone-ime-input.apk")
+
+
+def test_prepare_text_input_skips_an_up_to_date_helper() -> None:
+    """Verify normal session setup does not reinstall or disturb the foreground app."""
+    runner = FakeRunner()
+
+    adb_input.prepare_text_input(runner, "serial")
+
+    assert len(runner.calls) == 1
+
+
+def test_input_text_reports_editor_rejection_and_restores_the_ime() -> None:
+    """Verify a rejected commit is visible and cannot strand the helper IME."""
+    runner = FakeRunner(
+        broadcast=b'Broadcast completed: result=4, data="input connection rejected text"\n'
+    )
+
+    with pytest.raises(InputError, match="rejected text"):
+        adb_input.input_text(runner, "serial", "你好")
+
+    assert "ime set com.example.ime/.Keyboard" in runner.calls[-1][0][1]
+
+
+def test_input_text_reports_a_missing_focused_editor() -> None:
+    """Verify a fallback connection is not reported as successful input."""
+    runner = FakeRunner(broadcast=b'Broadcast completed: result=2, data="no input connection"\n')
+
+    with pytest.raises(InputError, match="no input connection"):
+        adb_input.input_text(runner, "serial", "你好", timeout=0.15)
+
+    assert "ime set com.example.ime/.Keyboard" in runner.calls[-1][0][1]
 
 
 def test_input_text_rejects_control_characters() -> None:
     """Verify input text rejects control characters."""
     with pytest.raises(InputError, match="printable"):
         adb_input.input_text(FakeRunner(), "serial", "first\nsecond")
-
-
-def test_input_text_reports_unicode_helper_failure_and_cleans_up() -> None:
-    """Verify input text reports unicode helper failure and cleans up."""
-
-    class FailingRunner(FakeRunner):
-        def run(self, args, **kwargs):
-            """Simulate a Unicode helper failure while recording cleanup."""
-            self.calls.append((tuple(args), kwargs))
-            return CommandResult(tuple(args), 0, b"FAILURES!!!\n", b"", 0.1)
-
-    runner = FailingRunner()
-
-    with pytest.raises(InputError, match="rejected Unicode"):
-        adb_input.input_text(runner, "serial", "你好")
-
-    assert runner.calls[-1][0][:3] == ("shell", "rm", "-f")

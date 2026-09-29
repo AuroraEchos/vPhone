@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import base64
 import importlib.resources
-import shlex
+import re
 import time
-import uuid
 
 from vphone.device.adb.runner import AdbRunner
 from vphone.device.errors import DeviceCommandTimeoutError, DeviceError, InputError
 from vphone.device.models import KeyCode, Point, PrimitiveResult
 
-_UNICODE_HELPER = "resources/vphone-unicode-input.jar"
-_UNICODE_TEST_CLASS = "dev.vphone.UnicodeInputTest"
+_IME_HELPER = "resources/vphone-ime-input.apk"
+_IME_PACKAGE = "dev.vphone.input"
+_IME_SERVICE = "dev.vphone.input/.VPhoneInputMethodService"
+_IME_ACTION = "dev.vphone.input.COMMIT_TEXT"
+_IME_VERSION_CODE = 3
+_BROADCAST_RESULT = re.compile(rb"Broadcast completed: result=(-?\d+)(?:, data=\"([^\"]*)\")?")
+_IME_COMPONENT = re.compile(r"^[A-Za-z0-9._]+/[A-Za-z0-9._$]+$")
 
 
 def tap(
@@ -126,9 +130,7 @@ def input_text(
     *,
     timeout: float = 10.0,
 ) -> PrimitiveResult:
-    """Enter printable text into the currently focused device field.
-
-    ASCII text uses ``input text``; Unicode text uses the packaged helper.
+    """Commit printable text through the focused editor's input connection.
 
     Args:
         runner: ADB command runner.
@@ -140,109 +142,189 @@ def input_text(
         The completed input primitive and its duration.
 
     Raises:
-        InputError: If text is invalid or the focused field rejects it.
+        InputError: If text is invalid, no editor is focused, or the editor rejects it.
         DeviceCommandTimeoutError: If the overall budget is exhausted.
     """
     if not isinstance(text, str) or not text:
         raise InputError("text must be a non-empty string")
     if not text.isprintable():
         raise InputError("text must contain printable characters only")
-    if not text.isascii():
-        return _input_unicode(runner, serial, text, timeout=timeout)
-
     if timeout <= 0:
         raise ValueError("timeout must be positive")
     started = time.monotonic()
     deadline = started + timeout
-    for chunk in _ascii_input_chunks(text):
-        encoded = chunk.replace(" ", "%s")
-        # ADB joins shell arguments, so quote the user-controlled value for the remote shell.
-        remote_command = f"input text {shlex.quote(encoded)}"
-        runner.run(("shell", remote_command), serial=serial, timeout=_remaining_timeout(deadline))
+    previous_ime, installed_version = _read_ime_state(runner, serial, deadline=deadline)
+    if _IME_COMPONENT.fullmatch(previous_ime) is None:
+        raise InputError("the device did not report a current input method")
+
+    if installed_version != _IME_VERSION_CODE:
+        raise InputError("the input method helper is not prepared for this device session")
+
+    switched = previous_ime != _IME_SERVICE
+    operation_error: DeviceError | None = None
+    restore_error: DeviceError | None = None
+    try:
+        if switched:
+            _select_ime_helper(runner, serial, deadline=deadline)
+        _commit_text(runner, serial, text, deadline=deadline)
+    except DeviceError as exc:
+        operation_error = exc
+    finally:
+        if switched:
+            try:
+                _restore_input_method(runner, serial, previous_ime)
+            except DeviceError as exc:
+                restore_error = exc
+
+    if operation_error is not None:
+        if restore_error is not None:
+            operation_error.add_note(f"failed to restore input method: {restore_error}")
+        raise operation_error
+    if restore_error is not None:
+        raise InputError(
+            "text was committed but the previous input method was not restored"
+        ) from restore_error
     return PrimitiveResult("input_text", time.monotonic() - started)
 
 
-def _ascii_input_chunks(text: str) -> list[str]:
-    """Keep literal %s across commands; Android input text decodes it as a space."""
-    chunks: list[str] = []
-    start = 0
-    while (index := text.find("%s", start)) != -1:
-        chunks.append(text[start : index + 1])
-        start = index + 1
-    chunks.append(text[start:])
-    return chunks
+def prepare_text_input(
+    runner: AdbRunner,
+    serial: str,
+    *,
+    timeout: float = 120.0,
+) -> None:
+    """Install or update the helper before any editor is focused for input."""
+    if timeout <= 0:
+        raise ValueError("timeout must be positive")
+    deadline = time.monotonic() + timeout
+    version_command = f"cmd package list packages --show-versioncode --user current {_IME_PACKAGE}"
+    result = runner.run(
+        ("shell", version_command),
+        serial=serial,
+        timeout=_remaining_timeout(deadline),
+    )
+    installed_version = _parse_installed_version(result.stdout)
+    if installed_version != _IME_VERSION_CODE:
+        _install_ime_helper(runner, serial, deadline=deadline)
 
 
-def _input_unicode(
+def _read_ime_state(
+    runner: AdbRunner,
+    serial: str,
+    *,
+    deadline: float,
+) -> tuple[str, int | None]:
+    """Read the selected IME and installed helper version in one device round trip."""
+    state_command = (
+        "settings get --user current secure default_input_method; "
+        "cmd package list packages --show-versioncode --user current "
+        f"{_IME_PACKAGE}"
+    )
+    result = runner.run(
+        ("shell", state_command),
+        serial=serial,
+        timeout=_remaining_timeout(deadline),
+    )
+    lines = result.stdout.decode("utf-8", errors="replace").splitlines()
+    previous_ime = lines[0].strip() if lines else ""
+    return previous_ime, _parse_installed_version("\n".join(lines[1:]).encode())
+
+
+def _parse_installed_version(output: bytes) -> int | None:
+    """Extract the helper version from package-manager output."""
+    text = output.decode("utf-8", errors="replace")
+    match = re.search(rf"package:{re.escape(_IME_PACKAGE)}\s+versionCode:(\d+)", text)
+    return int(match.group(1)) if match is not None else None
+
+
+def _install_ime_helper(
+    runner: AdbRunner,
+    serial: str,
+    *,
+    deadline: float,
+) -> None:
+    """Install or update the packaged, non-visual input method."""
+    helper = importlib.resources.files("vphone.device.adb").joinpath(_IME_HELPER)
+    with importlib.resources.as_file(helper) as helper_path:
+        if not helper_path.is_file():
+            raise InputError("the packaged input method helper is missing")
+        runner.run(
+            ("install", "--no-streaming", "-r", str(helper_path)),
+            serial=serial,
+            timeout=_remaining_timeout(deadline),
+        )
+
+
+def _select_ime_helper(
+    runner: AdbRunner,
+    serial: str,
+    *,
+    deadline: float,
+) -> None:
+    """Enable and select the helper with one static remote shell command."""
+    runner.run(
+        (
+            "shell",
+            f"ime enable {_IME_SERVICE} >/dev/null && ime set {_IME_SERVICE}",
+        ),
+        serial=serial,
+        timeout=_remaining_timeout(deadline),
+    )
+
+
+def _commit_text(
     runner: AdbRunner,
     serial: str,
     text: str,
     *,
-    timeout: float,
-) -> PrimitiveResult:
-    """Push the Unicode helper, enter text, and attempt helper cleanup.
-
-    Args:
-        runner: ADB command runner.
-        serial: Target device serial.
-        text: Printable Unicode text to enter.
-        timeout: Overall timeout budget in seconds.
-
-    Returns:
-        The completed input primitive and its duration.
-    """
-    if timeout <= 0:
-        raise ValueError("timeout must be positive")
-    started = time.monotonic()
-    deadline = started + timeout
-    remote_path = f"/data/local/tmp/vphone-unicode-input-{uuid.uuid4().hex}.jar"
-    helper = importlib.resources.files("vphone.device.adb").joinpath(_UNICODE_HELPER)
-
-    try:
-        with importlib.resources.as_file(helper) as helper_path:
-            if not helper_path.is_file():
-                raise InputError("the packaged Unicode input helper is missing")
-            runner.run(
-                ("push", str(helper_path), remote_path),
-                serial=serial,
-                timeout=_remaining_timeout(deadline),
-            )
-
-        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    deadline: float,
+) -> None:
+    """Send text to the helper and require an acknowledged editor commit."""
+    encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    while True:
         result = runner.run(
             (
                 "shell",
-                "uiautomator",
-                "runtest",
-                remote_path,
-                "-c",
-                _UNICODE_TEST_CLASS,
-                "-e",
+                "am",
+                "broadcast",
+                "--receiver-foreground",
+                "-p",
+                _IME_PACKAGE,
+                "-a",
+                _IME_ACTION,
+                "--es",
                 "text_base64",
                 encoded,
-                "-e",
-                "outputFormat",
-                "simple",
             ),
             serial=serial,
             timeout=_remaining_timeout(deadline),
         )
-        output = result.stdout + result.stderr
-        if b"OK (" not in output or b"FAILURES!!!" in output:
-            raise InputError("the focused UI node rejected Unicode text")
-        return PrimitiveResult("input_text", time.monotonic() - started)
-    finally:
-        try:
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                runner.run(
-                    ("shell", "rm", "-f", remote_path),
-                    serial=serial,
-                    timeout=min(remaining, 2.0),
-                    check=False,
-                )
-        except DeviceError:
-            pass
+        match = _BROADCAST_RESULT.search(result.stdout + result.stderr)
+        code = int(match.group(1)) if match is not None else 0
+        detail = (
+            match.group(2).decode("utf-8", errors="replace")
+            if match is not None and match.group(2) is not None
+            else ""
+        )
+        if code == 1:
+            return
+        if code in (3, 4):
+            raise InputError(detail or "the focused editor rejected text")
+        if deadline - time.monotonic() <= 0.2:
+            raise InputError(detail or "no focused editor accepted text")
+        time.sleep(0.1)
+
+
+def _restore_input_method(runner: AdbRunner, serial: str, previous_ime: str) -> None:
+    """Restore the user's IME and disable the helper even after input failure."""
+    runner.run(
+        (
+            "shell",
+            f"ime set {previous_ime} >/dev/null && ime disable {_IME_SERVICE} >/dev/null",
+        ),
+        serial=serial,
+        timeout=5.0,
+    )
 
 
 def _remaining_timeout(deadline: float) -> float:

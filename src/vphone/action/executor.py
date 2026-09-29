@@ -86,3 +86,15 @@ def _kind_of(action: Action) -> ActionKind:
     if isinstance(action, TextAction):
         return ActionKind.TEXT
     raise TypeError("action must be a supported L2 action")
+
+
+if __name__ == "__main__":
+    from vphone.device import AdbDeviceBackend
+
+    backend = AdbDeviceBackend()
+    devices = backend.list_devices()
+
+    with backend.open(devices[0].device_id) as device:
+        executor = ActionExecutor(device)
+
+        executor.execute(TextAction("不同软件输入测试"))

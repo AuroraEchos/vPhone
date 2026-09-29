@@ -27,7 +27,7 @@ dev = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"vphone.device.adb" = ["resources/*.jar"]
+"vphone.device.adb" = ["resources/*.apk"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

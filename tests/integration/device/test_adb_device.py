@@ -31,10 +31,10 @@ def test_authorized_device_supports_read_only_screenshot() -> None:
     not DEVICE_ID or not INPUT_TEST_TEXT,
     reason="VPHONE_DEVICE_ID and VPHONE_INPUT_TEST_TEXT are not configured",
 )
-def test_authorized_device_inputs_unicode_into_focused_field() -> None:
-    """Verify authorized device inputs unicode into focused field."""
+def test_authorized_device_commits_text_into_focused_editor() -> None:
+    """Verify an authorized device commits text through its focused editor."""
     with AdbDeviceBackend().open(DEVICE_ID) as device:
-        result = device.input_text(INPUT_TEST_TEXT, timeout=15)
+        result = device.input_text(INPUT_TEST_TEXT, timeout=45)
         screen = device.capture_screen(timeout=10)
 
     assert result.operation == "input_text"

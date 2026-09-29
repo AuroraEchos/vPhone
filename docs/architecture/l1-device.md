@@ -43,13 +43,13 @@ ADB 客户端 → ADB server → Android 设备
 | 接口 | 默认超时 | 返回值 / 关键语义 |
 | --- | ---: | --- |
 | `DeviceBackend.list_devices()` | 5 s | `list[DeviceDescriptor]`；包含未授权和离线设备 |
-| `DeviceBackend.open(device_id)` | 5 s | 校验并打开指定 ready 设备，不隐式选择第一台 |
+| `DeviceBackend.open(device_id)` | 5 s + 120 s setup | 校验指定设备并准备输入 helper；不隐式选择第一台 |
 | `DeviceSession.health_check()` | 5 s | 当前 `DeviceHealth`，区别于打开时的描述快照 |
 | `capture_screen()` | 10 s | PNG `ScreenFrame`：字节、尺寸、SHA-256、采集时间、耗时 |
 | `tap(Point)` | 5 s | 坐标点击；返回 `PrimitiveResult` |
 | `swipe(start, end, duration_ms=300)` | 5 s | 坐标滑动；时长 1–10000 ms |
 | `key_event(KeyCode \| int)` | 5 s | 预定义键或非负整数键码 |
-| `input_text(text)` | 10 s | 非空、可打印文本，输入到当前焦点 |
+| `input_text(text)` | 10 s | 非空、可打印文本，经标准输入连接提交到当前焦点 |
 | `close()` | — | 关闭会话，不关机、不断开 ADB |
 
 `Point` 与 `Rect` 是像素坐标模型；`Point` 校验非负整数，但不保证落在当前屏幕内。`ScreenFrame.captured_at` 是墙上时钟时间戳，`sha256` 用于标识截图字节，不证明页面处于稳定状态。`DeviceCapabilities` 是静态原语声明，不保证某个 App 或输入框接受所有操作。控件树相关模型、能力位及采集接口已从公开契约移除。
@@ -60,7 +60,7 @@ ADB 客户端 → ADB server → Android 设备
 
 1. [`AdbRunner`](../../src/vphone/device/adb/runner.py) 定位 `adb`，用参数列表启动子进程，统一处理输出和错误；不调用本机 shell。
 2. 发现模块执行 `adb devices -l`，解析序列号、状态与设备元数据。USB / 模拟器 / 网络类型基于序列号形态推断。
-3. `open(device_id)` 去除首尾空白、精确匹配设备 ID，仅在状态 ready 时创建会话；未找到、未授权、离线分别抛对应错误。
+3. `open(device_id)` 去除首尾空白、精确匹配设备 ID，仅在状态 ready 时创建会话，并在返回前用独立的 `input_setup_timeout` 准备输入 helper；未找到、未授权、离线分别抛对应错误。
 4. 会话关闭后所有设备操作抛 `DeviceClosedError`。同设备会话共享进程内 `threading.RLock`，使截图和输入不在同进程交错；外部 ADB 和其他进程不受此锁约束。
 
 ### 4.2 截图
@@ -74,12 +74,11 @@ L1 不获取 UI Automator hierarchy，不解析 XML，也不尝试读取 App 元
 | 原语 | 实现 | 主要约束 |
 | --- | --- | --- |
 | 点击 / 滑动 / 按键 | `adb shell input tap/swipe/keyevent` | 返回只说明命令正常结束，不证明 UI 效果 |
-| ASCII 文本 | `adb shell input text` | 空格按 Android `%s` 规则转换；远端 shell 参数经过引用 |
-| 非 ASCII 文本 | 临时推送项目自带的 UI Automator 输入 helper | Android API 21+；目标输入框需支持当前焦点上的 `ACTION_SET_TEXT` |
+| 文本 | 项目自带的无界面 IME 调用 `InputConnection.commitText()` | Android API 21+；目标必须是能接受系统键盘输入的当前编辑器 |
 
-Unicode helper 是**输入实现细节**：它仅对当前焦点的可编辑节点执行文本设置，不采集整页控件树，也不向感知层提供节点数据。因此纯视觉感知与保留 Unicode 输入能力并不冲突。它通常读取当前焦点文字与选区以插入或替换；密码节点或缺少有效选区时可能整段替换。helper 尽力清理临时 JAR，超时或断线时可能留有残余。
+文本输入不再区分 ASCII 与 Unicode，也不依赖 UI Automator、可访问性节点或剪贴板。`open()` 在返回会话前安装或升级签名 helper APK，避免安装页破坏后续编辑焦点；部分 OEM 首次安装时会显示系统确认页。每次输入前记录当前输入法，短暂启用并选择 helper，收到编辑器的提交确认后恢复原输入法并禁用 helper。广播入口要求发送方拥有 `android.permission.DUMP`，普通应用不能调用。
 
-文本仅接受非空、`str.isprintable()` 为真的字符串。ASCII 路径中包含字面 `%s` 的输入可能拆为多条命令，途中失败可能只输入前缀。Unicode 路径也不是事务；失败或超时后不能假设输入没有生效。L1 不自动重试，调用方应重新截图确认页面。
+文本仅接受非空、`str.isprintable()` 为真的字符串。`commitText()` 是一次编辑器提交，但失败或超时后仍不能假设输入没有生效；原输入法恢复失败也作为输入故障报告。L1 不重放文本，调用方应重新截图确认页面。
 
 ## 5. 错误、超时与资源限制
 
@@ -90,9 +89,9 @@ Unicode helper 是**输入实现细节**：它仅对当前焦点的可编辑节�
 | 环境 / 选择 | `AdbNotFoundError`、`DeviceNotFoundError`、`DeviceSelectionError` | 检查安装、设备 ID 和连接配置 |
 | 状态 | `DeviceUnauthorizedError`、`DeviceOfflineError`、`DeviceClosedError` | 授权、重连或重新打开会话 |
 | 命令 | `DeviceCommandError`、`DeviceCommandTimeoutError`、`DeviceProtocolError` | 不推断超时操作一定未生效 |
-| 截图 / 输入 | `ScreenshotError`、`InputError`、`UnsupportedCapabilityError` | 区分损坏 PNG、输入拒绝与能力限制 |
+| 截图 / 输入 | `ScreenshotError`、`InputError`、`UnsupportedCapabilityError` | 区分损坏 PNG、无焦点编辑器、输入拒绝与能力限制 |
 
-非法类型或数值可能直接抛 `TypeError` / `ValueError`，不应作为设备故障重试。ADB 命令失败可能以命令类错误抛出；无效 PNG 等本地校验错误为 `ScreenshotError`。`AdbRunner` 的 `subprocess.run(timeout=...)` 限制单条命令；锁等待、截图解码及多步 Unicode 输入并非严格端到端截止时间。ADB 输出在进程结束后检查单流 32 MiB 上限，不是流式内存硬限制。
+非法类型或数值可能直接抛 `TypeError` / `ValueError`，不应作为设备故障重试。ADB 命令失败可能以命令类错误抛出；无效 PNG 等本地校验错误为 `ScreenshotError`。`AdbRunner` 的 `subprocess.run(timeout=...)` 限制单条命令；锁等待、截图解码、helper 首次安装以及输入法恢复可能使实际墙上耗时超过数值。ADB 输出在进程结束后检查单流 32 MiB 上限，不是流式内存硬限制。
 
 ## 6. 使用与验证
 
@@ -114,7 +113,7 @@ uv run --extra dev ruff check .
 uv run --extra dev ruff format --check .
 ```
 
-普通真机集成测试只读验证设备状态与截图。Unicode 输入测试还需显式设置 `VPHONE_INPUT_TEST_TEXT`，并事先在设备上聚焦一个合适的可编辑输入框；它会真实修改手机内容。移除控件树后，该测试只验证原语返回并可重新截图，**不自动证明文本最终值正确**；需要人工检查或另建视觉端到端场景。
+普通真机集成测试验证设备状态与截图；首次 `open()` 也可能安装 helper，因此并非严格只读。文本输入测试还需显式设置 `VPHONE_INPUT_TEST_TEXT`，并事先在设备上聚焦一个合适的可编辑输入框；它会真实修改手机内容。该测试只验证编辑器接受提交并可重新截图，**不自动证明文本最终值正确**；需要人工检查或另建视觉端到端场景。
 
 ## 7. 当前限制
 

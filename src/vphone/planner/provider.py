@@ -13,6 +13,51 @@ from vphone.planner.errors import InvalidDecisionError, ModelError
 from vphone.planner.models import Decision, StepRecord
 from vphone.planner.tools import parse_tool_call, tools_for_screen
 
+from rich.console import Console
+from rich.tree import Tree
+import json
+
+def print_chat_completion_rich(response) -> None:
+    console = Console()
+    root = Tree(f"[bold]ChatCompletion[/] id={response.id} model={response.model}")
+
+    for ci, choice in enumerate(response.choices):
+        c = root.add(f"Choice[{ci}] finish_reason=[green]{choice.finish_reason}[/]")
+        msg = choice.message
+
+        m = c.add(f"message role={msg.role}")
+        m.add(f"content={msg.content!r}")
+
+        rc = getattr(msg, "reasoning_content", None)
+        if rc:
+            m.add(f"reasoning_content={rc!r}")
+
+        for ti, call in enumerate(msg.tool_calls or []):
+            t = m.add(f"tool_call[{ti}] type={call.type} id={call.id}")
+            f = t.add(f"function name=[cyan]{call.function.name}[/]")
+
+            raw = call.function.arguments
+            # 尝试美化 JSON，失败则原样输出（仍不截断）
+            try:
+                pretty = json.dumps(json.loads(raw), ensure_ascii=False, indent=2)
+            except (json.JSONDecodeError, TypeError):
+                pretty = raw
+            f.add(f"arguments={pretty}")
+
+    u = getattr(response, "usage", None)
+    if u:
+        n = root.add("usage")
+        n.add(
+            f"prompt={u.prompt_tokens} completion={u.completion_tokens} total={u.total_tokens}"
+        )
+        if getattr(u, "prompt_cache_hit_tokens", None) is not None:
+            n.add(
+                f"cache_hit={u.prompt_cache_hit_tokens} "
+                f"cache_miss={u.prompt_cache_miss_tokens}"
+            )
+
+    console.print(root)
+
 _INSTRUCTIONS = """You operate an Android phone using ONLY the current screenshot and the task.
 The screenshot is the only source of current page truth. It is the FULL image, not a crop.
 For tap/swipe, x and y are INTEGER PIXEL coordinates in the full screenshot.
@@ -140,6 +185,7 @@ class OpenAICompatibleDecisionModel:
                 if self._config.reasoning_effort is not None:
                     request_options["reasoning_effort"] = self._config.reasoning_effort
                 response = self._client.chat.completions.create(**request_options)
+                print_chat_completion_rich(response)
             except OpenAIError as exc:
                 raise ModelError("model request failed") from exc
 

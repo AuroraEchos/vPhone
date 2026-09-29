@@ -39,12 +39,19 @@ class AdbDeviceBackend:
         """
         return list_devices(self._runner, timeout=timeout)
 
-    def open(self, device_id: str, *, timeout: float = 5.0) -> AdbDeviceSession:
+    def open(
+        self,
+        device_id: str,
+        *,
+        timeout: float = 5.0,
+        input_setup_timeout: float = 120.0,
+    ) -> AdbDeviceSession:
         """Open a session for a currently ready device.
 
         Args:
             device_id: Exact ADB serial, with surrounding whitespace ignored.
             timeout: Maximum time allowed for the discovery command.
+            input_setup_timeout: Maximum time for one-time input helper setup.
 
         Returns:
             A session bound to the requested device.
@@ -73,4 +80,6 @@ class AdbDeviceBackend:
             raise DeviceOfflineError(
                 f"ADB device is not ready: {device_id} ({descriptor.state.value})"
             )
-        return AdbDeviceSession(self._runner, descriptor)
+        session = AdbDeviceSession(self._runner, descriptor)
+        session._prepare_text_input(timeout=input_setup_timeout)
+        return session

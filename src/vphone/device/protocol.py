@@ -60,6 +60,12 @@ class DeviceBackend(Protocol):
         """List ADB-visible devices and their states."""
         ...
 
-    def open(self, device_id: str, *, timeout: float = 5.0) -> DeviceSession:
+    def open(
+        self,
+        device_id: str,
+        *,
+        timeout: float = 5.0,
+        input_setup_timeout: float = 120.0,
+    ) -> DeviceSession:
         """Open a session for a ready device with the given serial."""
         ...
