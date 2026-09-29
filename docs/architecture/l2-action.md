@@ -3,7 +3,7 @@
 | 属性 | 内容 |
 | --- | --- |
 | 状态 | 已实现，开发阶段；以当前代码为准 |
-| 范围 | 四类具体动作的数据模型、单次派发、结果与错误表达 |
+| 范围 | 五类具体动作的数据模型、单次派发、结果与错误表达 |
 | 对上接口 | `vphone.action` 中的 `ActionExecutor`、`Action` / `ActionResult` |
 | 对下依赖 | L1 `DeviceSession` 协议；不依赖具体 ADB 实现 |
 | 主要实现 | [`src/vphone/action/models.py`](../../src/vphone/action/models.py)、[`executor.py`](../../src/vphone/action/executor.py) |
@@ -30,16 +30,16 @@ Android 当前界面（效果仍需重新观测）
 
 | L2 负责 | L2 不负责 |
 | --- | --- |
-| 建模并校验点击、滑动、按键、文本四类动作 | 从用户自然语言生成动作；识别截图内容或视觉目标 |
-| 将单个动作派发到 `DeviceSession` 对应方法 | 判断坐标是否命中目标、页面是否稳定、是否出现弹窗 |
+| 建模并校验点击、滑动、按键、文本、等待五类动作 | 从用户自然语言生成动作；识别截图内容或视觉目标 |
+| 将设备动作派发到 `DeviceSession`，或执行一次本地等待 | 判断坐标是否命中目标、页面是否稳定、是否出现弹窗 |
 | 对设备运行故障返回 `ActionResult.error`，记录动作种类和耗时 | 吞掉调用方编程错误、自动重试或回滚可能已生效的输入 |
-| 允许调用方设置一次动作的超时 | 动作序列、等待、条件分支、任务状态和 VLM 决策 |
+| 允许调用方设置一次设备动作的超时 | 动作序列、条件分支、任务状态和 VLM 决策 |
 
 L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作。例如 `TextAction` 不会寻找输入框或自动点击焦点；调用前应已确认当前焦点。未来若要新增“点击视觉目标”等复合能力，应先明确属于 L3 定位、L4 规划还是 L2 原语，而不是让执行器隐式承担感知工作。
 
 ## 3. 公开数据契约
 
-动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是四种动作的联合类型。
+动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是五种动作的联合类型。
 
 | 动作 | 参数 | 校验 | L1 派发目标 |
 | --- | --- | --- | --- |
@@ -47,20 +47,21 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 | `SwipeAction` | `start: Point`、`end: Point`、`duration_ms=300` | 起终点为 `Point`，持续时间为 1–10000 ms 的整数 | `device.swipe(start, end, duration_ms=...)` |
 | `KeyAction` | `key: KeyCode \| int` | 预定义键或非负整数；布尔值不算整数键码 | `device.key_event(key)` |
 | `TextAction` | `text: str` | 非空、可打印字符串 | `device.input_text(text)` |
+| `WaitAction` | `seconds: float` | 有限正数；超过 30 秒时裁剪为 30 秒 | 本地 `time.sleep(seconds)`，不调用设备 |
 
 `Point` 来自 L1，表示设备屏幕像素坐标；类型与非负性校验不等于屏幕内校验。上层应依据**最近一次有效观测**的尺寸和目标边界选择坐标，并考虑页面滚动、动画与旋转造成的失效。`TextAction` 的 `repr` 隐藏文本字段，但这只降低误打印风险，不构成完整的敏感数据保护；文本仍传给 L1、ADB 及设备。
 
-`ActionKind` 分别为 `tap`、`swipe`、`key`、`text`。`ActionResult` 字段含义如下：
+`ActionKind` 分别为 `tap`、`swipe`、`key`、`text`、`wait`。`ActionResult` 字段含义如下：
 
 | 字段 | 含义 |
 | --- | --- |
 | `kind` | 被执行的动作类别，不保存坐标或文本 |
 | `duration_seconds` | L2 单次派发的墙上耗时；从动作和超时校验完成后开始计时，包含等待 L1 锁和设备调用 |
-| `primitive` | L1 正常返回时的 `PrimitiveResult`；含原语名称及 L1 测量的耗时 |
+| `primitive` | L1 设备动作正常返回时的 `PrimitiveResult`；本地等待没有 L1 原语，因此为空 |
 | `error` | L1 抛出的原始 `DeviceError`；没有被转换成字符串或丢失异常类型 |
 | `completed` | `error is None`；只表示 L1 正常返回，不是界面效果或任务成功判定 |
 
-由 `ActionExecutor.execute()` 返回的结果在正常路径上具有 `primitive`、没有 `error`；在捕获到设备故障时具有 `error`、没有 `primitive`。`ActionResult` 模型本身没有强制这两个字段互斥，调用方应以执行器返回值为准，不应手工构造后依赖该约定。
+由 `ActionExecutor.execute()` 返回的设备动作结果在正常路径上具有 `primitive`、没有 `error`；本地等待成功时 `primitive` 与 `error` 都为空；在捕获到设备故障时具有 `error`、没有 `primitive`。`ActionResult` 模型本身没有强制这些组合，调用方应以执行器返回值为准，不应手工构造后依赖该约定。
 
 ## 4. 单次执行语义
 
@@ -68,7 +69,7 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 
 1. 通过运行时类型确定 `ActionKind`；不支持的动作立即抛 `TypeError`。
 2. 若显式传入 `timeout`，要求它是有限、正的数值；布尔值和无穷大不接受。非法值抛 `TypeError` / `ValueError`，且不会触碰设备。
-3. 启动计时，将动作派发到对应的 L1 会话方法；每次恰好调用一个方法。L1 的文本输入可能进一步拆成多条 ADB 命令。
+3. 启动计时；设备动作派发到对应的 L1 会话方法，等待动作则只在本地休眠。L1 的文本输入可能进一步拆成多条 ADB 命令。
 4. L1 正常返回时填充 `primitive`；L1 抛出 `DeviceError` 时填充 `error`。非 `DeviceError` 的编程错误不会被 L2 静默包装。
 
 | 动作 | `timeout=None` 时继承的 L1 默认值 |

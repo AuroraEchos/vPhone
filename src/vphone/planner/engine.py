@@ -7,7 +7,14 @@ import time
 from collections.abc import Callable
 
 from vphone.action import ActionExecutor
-from vphone.action.models import ActionKind, KeyAction, SwipeAction, TapAction, TextAction
+from vphone.action.models import (
+    ActionKind,
+    KeyAction,
+    SwipeAction,
+    TapAction,
+    TextAction,
+    WaitAction,
+)
 from vphone.device.protocol import DeviceSession
 from vphone.perception import PerceptionEngine
 from vphone.perception.errors import PerceptionError
@@ -123,6 +130,8 @@ class PlannerEngine:
                 if isinstance(action, KeyAction)
                 else ActionKind.TEXT
                 if isinstance(action, TextAction)
+                else ActionKind.WAIT
+                if isinstance(action, WaitAction)
                 else None
             )
             if kind not in self._allowed_kinds:

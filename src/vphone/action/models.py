@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from enum import StrEnum
 
 from vphone.device.errors import DeviceError
 from vphone.device.models import KeyCode, Point, PrimitiveResult
+
+MAX_WAIT_SECONDS = 30.0
 
 
 class ActionKind(StrEnum):
@@ -14,6 +17,7 @@ class ActionKind(StrEnum):
     SWIPE = "swipe"
     KEY = "key"
     TEXT = "text"
+    WAIT = "wait"
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,7 +74,20 @@ class TextAction:
             raise ValueError("text must contain printable characters only")
 
 
-Action = TapAction | SwipeAction | KeyAction | TextAction
+@dataclass(frozen=True, slots=True)
+class WaitAction:
+    seconds: float
+
+    def __post_init__(self) -> None:
+        """Require a positive duration and cap it to the safe wait limit."""
+        if isinstance(self.seconds, bool) or not isinstance(self.seconds, (int, float)):
+            raise TypeError("wait seconds must be a number")
+        if not math.isfinite(self.seconds) or self.seconds <= 0:
+            raise ValueError("wait seconds must be finite and positive")
+        object.__setattr__(self, "seconds", min(float(self.seconds), MAX_WAIT_SECONDS))
+
+
+Action = TapAction | SwipeAction | KeyAction | TextAction | WaitAction
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,5 +99,5 @@ class ActionResult:
 
     @property
     def completed(self) -> bool:
-        """Whether L1 returned normally; this does not verify the resulting UI."""
+        """Whether the action returned normally; this does not verify the resulting UI."""
         return self.error is None

@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from vphone.action import KeyAction, SwipeAction, TapAction, TextAction
+from vphone.action import KeyAction, SwipeAction, TapAction, TextAction, WaitAction
 from vphone.device import KeyCode, Point, ScreenFrame
 from vphone.planner.coordinates import to_screen_point
 from vphone.planner.errors import InvalidDecisionError
@@ -50,7 +50,7 @@ def test_every_tool_requires_task_aware_trace_fields(screen: ScreenFrame) -> Non
     """Require screen meaning and decision intent for every possible decision."""
     tools = tools_for_screen(screen)
 
-    assert len(tools) == 7
+    assert len(tools) == 8
     for tool in tools:
         parameters = tool["function"]["parameters"]
         assert "screen_summary" in parameters["properties"]
@@ -76,11 +76,13 @@ def test_parse_supported_tools(screen: ScreenFrame) -> None:
     )
     key = parse_tool_call("press_key", _args(key="BACK"), screen)
     typed = parse_tool_call("input_text", _args(text="hello"), screen)
+    wait = parse_tool_call("wait", _args(seconds=3), screen)
     assert tap == ActionDecision(TapAction(Point(1215, 0)), TRACE)
     assert isinstance(swipe, ActionDecision) and isinstance(swipe.action, SwipeAction)
     assert swipe.trace == TRACE
     assert key == ActionDecision(KeyAction(KeyCode.BACK), TRACE)
     assert typed == ActionDecision(TextAction("hello"), TRACE)
+    assert wait == ActionDecision(WaitAction(3), TRACE)
     assert parse_tool_call("finish", _args(answer="42"), screen) == FinishDecision("42", TRACE)
     assert parse_tool_call("stop", _args(reason="unknown"), screen) == StopDecision(
         "unknown", TRACE
@@ -88,6 +90,20 @@ def test_parse_supported_tools(screen: ScreenFrame) -> None:
     assert parse_tool_call(
         "request_confirmation", _args(question="Proceed?"), screen
     ) == ConfirmationDecision("Proceed?", TRACE)
+
+
+def test_wait_tool_advertises_and_enforces_upper_cap(screen: ScreenFrame) -> None:
+    """Guide normal model output and defensively cap an out-of-schema duration."""
+    wait_tool = next(
+        tool for tool in tools_for_screen(screen) if tool["function"]["name"] == "wait"
+    )
+    seconds = wait_tool["function"]["parameters"]["properties"]["seconds"]
+    assert seconds["exclusiveMinimum"] == 0
+    assert seconds["maximum"] == 30.0
+
+    decision = parse_tool_call("wait", _args(seconds=300), screen)
+
+    assert decision == ActionDecision(WaitAction(30), TRACE)
 
 
 @pytest.mark.parametrize(
@@ -104,6 +120,8 @@ def test_parse_supported_tools(screen: ScreenFrame) -> None:
         ),
         ("press_key", _args(key="POWER")),
         ("input_text", _args(text="\n")),
+        ("wait", _args(seconds=0)),
+        ("wait", _args(seconds=True)),
         ("finish", _args(answer="")),
         ("tap", json.dumps({"screen_summary": "settings", "x": 1, "y": 2})),
         ("tap", _args(x=1, y=2, screen_summary="\n")),

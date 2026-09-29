@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 import base64
+import json
 
 from openai import OpenAI, OpenAIError
+from rich.console import Console
+from rich.tree import Tree
 
-from vphone.action.models import KeyAction, SwipeAction, TapAction, TextAction
+from vphone.action.models import KeyAction, SwipeAction, TapAction, TextAction, WaitAction
 from vphone.perception.models import PageObservation
 from vphone.planner.config import ModelConfig
 from vphone.planner.errors import InvalidDecisionError, ModelError
 from vphone.planner.models import Decision, StepRecord
 from vphone.planner.tools import parse_tool_call, tools_for_screen
 
-from rich.console import Console
-from rich.tree import Tree
-import json
 
 def print_chat_completion_rich(response) -> None:
     console = Console()
@@ -68,6 +68,9 @@ and a concise decision_reason that connects the decision to the task and prior t
 Do not copy passwords, tokens, or other sensitive values into either trajectory field.
 Treat prior trajectory as past context only; the current screenshot is authoritative.
 After an action, a new screenshot will be captured and you will decide again.
+If the current screenshot visibly shows a loading indicator or another in-progress state,
+use wait for a short duration before inspecting a fresh screenshot. Do not wait merely because
+an expected control is absent, and do not repeat waits when the screen is no longer loading.
 Do not assume a prior action changed the screen; inspect the current screenshot.
 Use the trajectory to understand why you reached the current screen. If the current screenshot
 shows that the latest attempt did not achieve its stated purpose, do not repeat the same action
@@ -95,9 +98,14 @@ def _history_line(index: int, step: StepRecord) -> str:
         )
     elif isinstance(action, TextAction):
         description = f"input_text({len(action.text)} characters)"
+    elif isinstance(action, WaitAction):
+        description = f"wait({action.seconds:g} seconds)"
     else:
         description = "unknown_action"
-    outcome = "device command completed" if step.result.completed else "device command failed"
+    if isinstance(action, WaitAction):
+        outcome = "wait completed" if step.result.completed else "wait failed"
+    else:
+        outcome = "device command completed" if step.result.completed else "device command failed"
     return (
         f"{index}. Saw: {step.trace.screen_summary} "
         f"Decision: {step.trace.decision_reason} "

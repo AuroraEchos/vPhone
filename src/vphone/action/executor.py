@@ -13,6 +13,7 @@ from vphone.action.models import (
     SwipeAction,
     TapAction,
     TextAction,
+    WaitAction,
 )
 from vphone.device.errors import DeviceError
 from vphone.device.protocol import DeviceSession
@@ -23,7 +24,7 @@ class ActionExecutor:
         """Bind an executor to one backend-independent device session.
 
         Args:
-            device: Session that will receive every concrete action.
+            device: Session that will receive actions backed by device primitives.
         """
         self._device = device
 
@@ -35,7 +36,7 @@ class ActionExecutor:
             timeout: Optional override for the L1 primitive timeout.
 
         Returns:
-            Command outcome; completion does not prove a UI effect.
+            Action outcome; completion does not prove a UI effect.
 
         Raises:
             TypeError: If the action or timeout has an invalid type.
@@ -59,8 +60,11 @@ class ActionExecutor:
                 )
             elif isinstance(action, KeyAction):
                 primitive = self._device.key_event(action.key, **options)
-            else:
+            elif isinstance(action, TextAction):
                 primitive = self._device.input_text(action.text, **options)
+            else:
+                time.sleep(action.seconds)
+                primitive = None
         except DeviceError as exc:
             return ActionResult(
                 kind=kind,
@@ -85,6 +89,8 @@ def _kind_of(action: Action) -> ActionKind:
         return ActionKind.KEY
     if isinstance(action, TextAction):
         return ActionKind.TEXT
+    if isinstance(action, WaitAction):
+        return ActionKind.WAIT
     raise TypeError("action must be a supported L2 action")
 
 

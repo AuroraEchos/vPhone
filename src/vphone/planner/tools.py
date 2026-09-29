@@ -5,7 +5,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from vphone.action.models import KeyAction, SwipeAction, TapAction, TextAction
+from vphone.action.models import (
+    MAX_WAIT_SECONDS,
+    KeyAction,
+    SwipeAction,
+    TapAction,
+    TextAction,
+    WaitAction,
+)
 from vphone.device.models import KeyCode, ScreenFrame
 from vphone.planner.coordinates import to_screen_point
 from vphone.planner.errors import InvalidDecisionError
@@ -98,6 +105,21 @@ def tools_for_screen(screen: ScreenFrame) -> list[dict[str, Any]]:
             {"text": {"type": "string"}},
         ),
         _tool(
+            "wait",
+            "Wait only when the current screen visibly shows loading or an in-progress state.",
+            {
+                "seconds": {
+                    "type": "number",
+                    "exclusiveMinimum": 0,
+                    "maximum": MAX_WAIT_SECONDS,
+                    "description": (
+                        f"Requested wait duration; values are capped at {MAX_WAIT_SECONDS:g} "
+                        "seconds by the runtime."
+                    ),
+                }
+            },
+        ),
+        _tool(
             "finish",
             "Finish only when the current screenshot supports the answer.",
             {"answer": {"type": "string"}},
@@ -142,6 +164,7 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         "swipe": {"start_x", "start_y", "end_x", "end_y", "duration_ms"},
         "press_key": {"key"},
         "input_text": {"text"},
+        "wait": {"seconds"},
         "finish": {"answer"},
         "stop": {"reason"},
         "request_confirmation": {"question"},
@@ -176,6 +199,12 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         if not isinstance(key, str) or key not in {"BACK", "HOME", "ENTER", "APP_SWITCH"}:
             raise InvalidDecisionError("unsupported key")
         return ActionDecision(KeyAction(KeyCode[key]), trace)
+    if name == "wait":
+        try:
+            action = WaitAction(values["seconds"])
+        except (TypeError, ValueError) as exc:
+            raise InvalidDecisionError(str(exc)) from exc
+        return ActionDecision(action, trace)
 
     field = {
         "input_text": "text",
