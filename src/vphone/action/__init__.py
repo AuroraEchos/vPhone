@@ -9,6 +9,7 @@ from vphone.action.models import (
     SwipeAction,
     TapAction,
     TextAction,
+    WaitAction,
 )
 
 __all__ = [
@@ -20,4 +21,5 @@ __all__ = [
     "SwipeAction",
     "TapAction",
     "TextAction",
+    "WaitAction",
 ]

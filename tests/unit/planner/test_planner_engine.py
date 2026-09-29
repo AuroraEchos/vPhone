@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from vphone.action import ActionKind, TapAction
+from vphone.action import ActionKind, TapAction, WaitAction
 from vphone.device import Point, PrimitiveResult, ScreenFrame
 from vphone.planner.engine import PlannerEngine
 from vphone.planner.errors import InvalidDecisionError
@@ -114,6 +114,24 @@ def test_disallowed_action_does_not_reach_device() -> None:
     )
 
     assert result.status is RunStatus.STOPPED
+    assert device.taps == []
+
+
+def test_wait_action_is_recorded_and_followed_by_fresh_observation(
+    monkeypatch,
+) -> None:
+    """Treat waiting as a bounded action before observing the loading screen again."""
+    waits = []
+    monkeypatch.setattr("vphone.action.executor.time.sleep", waits.append)
+    device = FakeDevice()
+    model = FakeModel([ActionDecision(WaitAction(2), TRACE), FinishDecision("loaded", TRACE)])
+
+    result = PlannerEngine(model, settle_seconds=0).run("Wait for loading", device)
+
+    assert result.status is RunStatus.FINISHED
+    assert waits == [2.0]
+    assert result.steps[0].result.kind is ActionKind.WAIT
+    assert device.screen_calls == 2
     assert device.taps == []
 
 

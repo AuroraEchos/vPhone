@@ -11,6 +11,7 @@ from vphone.action import (
     SwipeAction,
     TapAction,
     TextAction,
+    WaitAction,
 )
 from vphone.device import DeviceCommandTimeoutError, KeyCode, Point, PrimitiveResult
 
@@ -82,6 +83,21 @@ def test_executor_forwards_explicit_timeout() -> None:
     ActionExecutor(device).execute(TapAction(Point(10, 20)), timeout=2.5)
 
     assert device.calls == [("tap", (Point(10, 20),), {"timeout": 2.5})]
+
+
+def test_executor_waits_without_calling_device(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A wait is a local action and does not dispatch a device primitive."""
+    waits = []
+    monkeypatch.setattr("vphone.action.executor.time.sleep", waits.append)
+    device = FakeDevice()
+
+    result = ActionExecutor(device).execute(WaitAction(2.5))
+
+    assert waits == [2.5]
+    assert result.kind is ActionKind.WAIT
+    assert result.completed is True
+    assert result.primitive is None
+    assert device.calls == []
 
 
 @pytest.mark.parametrize("timeout", [0, -1, float("inf"), float("nan")])
