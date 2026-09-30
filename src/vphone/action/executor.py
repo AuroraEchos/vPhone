@@ -72,6 +72,7 @@ class ActionExecutor:
                 error=exc,
             )
 
+
         return ActionResult(
             kind=kind,
             duration_seconds=time.monotonic() - started,

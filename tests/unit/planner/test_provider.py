@@ -12,7 +12,7 @@ from vphone.device import Point, ScreenFrame
 from vphone.perception import PageObservation
 from vphone.planner.config import ModelConfig
 from vphone.planner.errors import InvalidDecisionError
-from vphone.planner.models import ActionDecision, DecisionTrace, StepRecord
+from vphone.planner.models import ActionDecision, DecisionTrace, StepRecord, TokenUsage
 from vphone.planner.provider import OpenAICompatibleDecisionModel
 
 
@@ -28,10 +28,11 @@ def _args(**values: object) -> str:
 
 
 class FakeCompletions:
-    def __init__(self, calls: list[tuple[str, str]]) -> None:
+    def __init__(self, calls: list[tuple[str, str]], usage: object | None = None) -> None:
         """Store tool calls for a fixed synthetic model response."""
         self.calls = calls
         self.kwargs = None
+        self.usage = usage
 
     def create(self, **kwargs):
         """Capture request arguments and return the configured tool calls."""
@@ -41,19 +42,25 @@ class FakeCompletions:
             for name, args in self.calls
         ]
         return SimpleNamespace(
+            usage=self.usage,
             choices=[
                 SimpleNamespace(
                     finish_reason="tool_calls",
                     message=SimpleNamespace(tool_calls=tool_calls),
                 )
-            ]
+            ],
         )
 
 
 class SequenceCompletions:
-    def __init__(self, responses: list[list[tuple[str, str]]]) -> None:
+    def __init__(
+        self,
+        responses: list[list[tuple[str, str]]],
+        usages: list[object | None] | None = None,
+    ) -> None:
         """Queue different tool-call sets for retry-path testing."""
         self.responses = responses
+        self.usages = usages or [None] * len(responses)
         self.prompts: list[str] = []
 
     def create(self, **kwargs):
@@ -65,12 +72,13 @@ class SequenceCompletions:
             for name, args in calls
         ]
         return SimpleNamespace(
+            usage=self.usages.pop(0),
             choices=[
                 SimpleNamespace(
                     finish_reason="tool_calls",
                     message=SimpleNamespace(tool_calls=tool_calls),
                 )
-            ]
+            ],
         )
 
 
@@ -88,7 +96,7 @@ def _observation():
     return PageObservation("obs", screen)
 
 
-def test_provider_sends_png_as_original_and_returns_validated_action() -> None:
+def test_provider_sends_png_as_original_and_returns_validated_action(capsys) -> None:
     """Verify provider sends png as original and returns validated action."""
     model, completions = _model([("tap", _args(x=99, y=199))])
 
@@ -116,6 +124,33 @@ def test_provider_sends_png_as_original_and_returns_validated_action() -> None:
     assert "do not repeat the same action" in instructions
     assert "several horizontally paged screens" in instructions
     assert "instead of assuming that a vertical swipe opens an app drawer" in instructions
+    assert "Do not pause for user confirmation" in instructions
+    assert "sending or deleting when requested" in instructions
+    assert all(
+        item["function"]["name"] != "request_confirmation" for item in completions.kwargs["tools"]
+    )
+    assert capsys.readouterr().out == ""
+
+
+def test_provider_attaches_usage_to_decision() -> None:
+    """Normalize provider token counts for the session step record."""
+    usage = SimpleNamespace(
+        prompt_tokens=3593,
+        completion_tokens=129,
+        total_tokens=3722,
+        prompt_cache_hit_tokens=2304,
+        prompt_cache_miss_tokens=1289,
+    )
+    completions = FakeCompletions([("tap", _args(x=1, y=2))], usage)
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    model = OpenAICompatibleDecisionModel(
+        ModelConfig("test-key", "https://example.test", "vision-test"),
+        client=client,
+    )
+
+    decision = model.decide("Tap icon", _observation(), ())
+
+    assert decision.usage == TokenUsage(3593, 129, 3722, 2304, 1289)
 
 
 def test_provider_rejects_multiple_tool_calls() -> None:
@@ -181,6 +216,39 @@ def test_provider_repairs_missing_field_once_without_action() -> None:
     assert decision.action.point == Point(50, 70)
     assert len(completions.prompts) == 2
     assert "previous proposal was rejected" in completions.prompts[1]
+
+
+def test_provider_aggregates_usage_across_format_retry() -> None:
+    """Charge both model requests to a step when formatting requires a retry."""
+    usages = [
+        SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=10,
+            total_tokens=110,
+            prompt_cache_hit_tokens=20,
+            prompt_cache_miss_tokens=80,
+        ),
+        SimpleNamespace(
+            prompt_tokens=200,
+            completion_tokens=20,
+            total_tokens=220,
+            prompt_cache_hit_tokens=50,
+            prompt_cache_miss_tokens=150,
+        ),
+    ]
+    completions = SequenceCompletions(
+        [[("tap", '{"x":50}')], [("tap", _args(x=50, y=70))]],
+        usages,
+    )
+    client = SimpleNamespace(chat=SimpleNamespace(completions=completions))
+    model = OpenAICompatibleDecisionModel(
+        ModelConfig("test-key", "https://example.test", "vision-test"),
+        client=client,
+    )
+
+    decision = model.decide("Tap icon", _observation(), ())
+
+    assert decision.usage == TokenUsage(300, 30, 330, 70, 230)
 
 
 def test_provider_sends_task_aware_trajectory_without_old_coordinates() -> None:

@@ -18,7 +18,6 @@ from vphone.planner.coordinates import to_screen_point
 from vphone.planner.errors import InvalidDecisionError
 from vphone.planner.models import (
     ActionDecision,
-    ConfirmationDecision,
     Decision,
     DecisionTrace,
     FinishDecision,
@@ -129,11 +128,6 @@ def tools_for_screen(screen: ScreenFrame) -> list[dict[str, Any]]:
             "Stop when the screen or next step is uncertain.",
             {"reason": {"type": "string"}},
         ),
-        _tool(
-            "request_confirmation",
-            "Pause before a consequential or irreversible step.",
-            {"question": {"type": "string"}},
-        ),
     ]
 
 
@@ -167,7 +161,6 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         "wait": {"seconds"},
         "finish": {"answer"},
         "stop": {"reason"},
-        "request_confirmation": {"question"},
     }
     if name not in expected or values.keys() != expected[name] | trace_fields:
         raise InvalidDecisionError(
@@ -210,7 +203,6 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         "input_text": "text",
         "finish": "answer",
         "stop": "reason",
-        "request_confirmation": "question",
     }[name]
     value = values[field]
     if not isinstance(value, str) or not value.strip() or len(value) > 1000:
@@ -223,4 +215,4 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         return FinishDecision(value, trace)
     if name == "stop":
         return StopDecision(value, trace)
-    return ConfirmationDecision(value, trace)
+    raise AssertionError("unreachable")

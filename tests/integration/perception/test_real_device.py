@@ -37,6 +37,13 @@ def test_real_page_observation_contains_current_screenshot() -> None:
     assert observation.screen.height > 0
     assert len(observation.screen.sha256) == 64
     assert observation.observation_id
-    assert runner.calls == [("devices", "-l"), ("exec-out", "screencap", "-p")]
+    assert runner.calls == [
+        ("devices", "-l"),
+        (
+            "shell",
+            "cmd package list packages --show-versioncode --user current dev.vphone.input",
+        ),
+        ("exec-out", "screencap", "-p"),
+    ]
     assert not hasattr(observation, "text_candidates")
     assert not hasattr(observation, "tree_status")

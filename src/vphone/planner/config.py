@@ -23,7 +23,7 @@ class ModelConfig:
     def __post_init__(self) -> None:
         """Reject missing or malformed endpoint and request options."""
         if not isinstance(self.api_key, str) or not self.api_key.strip():
-            raise ValueError("API_KEY is required")
+            raise ValueError("VPHONE_API_KEY is required")
         if not isinstance(self.base_url, str):
             raise TypeError("VPHONE_MODEL_BASE_URL must be an HTTP(S) URL")
         parsed = urlparse(self.base_url)
@@ -70,7 +70,7 @@ class ModelConfig:
         except ValueError as exc:
             raise ValueError("model timeout or output token limit is invalid") from exc
         return cls(
-            api_key=os.getenv("API_KEY", ""),
+            api_key=os.getenv("VPHONE_API_KEY", ""),
             base_url=os.getenv("VPHONE_MODEL_BASE_URL", ""),
             model_id=os.getenv("VPHONE_MODEL_ID", ""),
             request_timeout_seconds=timeout,
