@@ -1,6 +1,6 @@
 # vPhone
 
-用自然语言驱动 Android 手机。项目处于 `dev` 阶段，可在已授权的真机上运行指定任务，尚未发布安装包。
+用自然语言驱动 Android 设备。项目处于 `dev` 阶段，当前面向受控模拟器和评测环境；已授权真机仅用于开发验证，尚未发布安装包。
 
 ## 当前架构
 
@@ -27,18 +27,20 @@ uv run --extra dev ruff check .
 uv run --extra dev ruff format --check .
 ```
 
-## 在真机上运行任务
+## 在受控 Android 设备上运行任务
 
-参考 [`.env.example`](.env.example) 配置项目根目录的 `.env`：`API_KEY`、`VPHONE_MODEL_BASE_URL` 和 `VPHONE_MODEL_ID` 为必填项。已有 `.env` 时补充缺少的字段即可，勿覆盖原有密钥。示例配置使用 DeepSeek；也可配置其他兼容图像输入与函数工具调用的 Chat Completions 服务。`.env` 已加入 `.gitignore`。准备一台已授权的 Android 手机；截图会发送到所配置的模型服务，请勿在包含敏感页面的设备上运行。
+参考 [`.env.example`](.env.example) 配置项目根目录的 `.env`：`VPHONE_API_KEY`、`VPHONE_MODEL_BASE_URL` 和 `VPHONE_MODEL_ID` 为必填项。已有 `.env` 时补充缺少的字段即可，勿覆盖原有密钥。示例配置使用 DeepSeek；也可配置其他兼容图像输入与函数工具调用的 Chat Completions 服务。`.env` 已加入 `.gitignore`。准备一台 ADB 可见的受控模拟器或已授权测试设备；截图会发送到所配置的模型服务，请勿在包含敏感页面的设备上运行。
 
 ```bash
 uv run python scripts/probe_coordinates.py  # 仅发送合成图，不操作手机
 uv run vphone "在系统设置中查看当前电量"
 ```
 
-`vphone` 是 `pyproject.toml` 注册的命令，入口为 `vphone.main:main`；也可用 `uv run python -m vphone.main "任务内容"` 启动。多设备时设置 `VPHONE_DEVICE_ID`。单次任务默认最多执行 12 个动作，可在 `.env` 调整运行预算。点击、滑动、按键和文本输入均可由模型提出；进度日志不会打印输入文本。遇到无效模型输出、设备错误或需确认的操作会停止。目前不能可靠保证每个点击都可逆，**不要将它用于支付、删除、发送等高风险任务的无人值守执行**。更换模型时还需验证该服务的图片及工具调用协议；配置参数与验收见 [L4 决策层](docs/architecture/l4-planner.md)。
+`vphone` 是 `pyproject.toml` 注册的命令，入口为 `vphone.main:main`；也可用 `uv run python -m vphone.main "任务内容"` 启动。多设备时设置 `VPHONE_DEVICE_ID`。单次任务默认最多执行 12 个动作，可在 `.env` 调整运行预算。点击、滑动、按键和文本输入均可由模型提出；进度日志不会打印输入文本。当前版本没有人工确认工具，模型会直接执行任务明确要求的发送或删除等操作，因此只应在受控测试环境中运行，不要用于包含真实账户、支付或重要数据的个人设备。更换模型时还需验证该服务的图片及工具调用协议；配置参数与验收见 [L4 决策层](docs/architecture/l4-planner.md)。
 
-当前版本不保存任务轨迹或截图文件。规划器只在本次运行的内存中保留任务感知轨迹：每个已执行步骤对应的页面摘要、决策原因、动作及设备命令结果。后续模型上下文使用这些任务语义而不是旧截图坐标或已输入文本；终端进度输出仍只显示动作类型及设备命令结果。已有的本地 `traces/` 目录不会被自动删除，并继续由 Git 忽略。
+当前版本不保存任务轨迹或截图文件。规划器只在本次运行的内存中保留任务感知轨迹：每个已执行步骤对应的页面摘要、决策原因、动作及设备命令结果。后续模型上下文使用这些任务语义而不是旧截图坐标或已输入文本；终端从同一 `StepRecord` 输出页面摘要、决策原因、当前动作的脱敏描述、命令结果、耗时和模型返回的 token usage，文本动作只显示字符数。已有的本地 `traces/` 目录不会被自动删除，并继续由 Git 忽略。
+
+Python 调用方使用 `PlannerSession` 保存单个任务的运行状态，并重复调用 `step()`；每次调用最多派发一个设备动作，直到返回结果的 `terminal` 为 `True`。
 
 ## 真机观察示例
 

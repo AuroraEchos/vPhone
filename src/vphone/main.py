@@ -8,20 +8,49 @@ import os
 from dotenv import find_dotenv, load_dotenv
 
 from vphone.device import AdbDeviceBackend
-from vphone.planner import ModelConfig, OpenAICompatibleDecisionModel, PlannerEngine
+from vphone.planner import ModelConfig, OpenAICompatibleDecisionModel, PlannerSession
 from vphone.planner.models import StepRecord
 
 
 def _report_step(step: StepRecord) -> None:
-    """Print one action result without logging text input or screenshots.
+    """Print one structured action record without logging typed text or screenshots.
 
     Args:
         step: The completed L2 action and its outcome.
     """
-    print(
-        f"action={type(step.action).__name__}, command_completed={step.result.completed}",
-        flush=True,
-    )
+    fields = [
+        ("screen_summary", step.trace.screen_summary),
+        ("decision_reason", step.trace.decision_reason),
+        ("action", step.describe_action(include_coordinates=True)),
+        ("result", step.result_description),
+        ("duration", f"{step.result.duration_seconds:.3f}s"),
+    ]
+    lines = ["Step completed"]
+    for index, (label, value) in enumerate(fields):
+        is_last = index == len(fields) - 1 and step.usage is None
+        lines.append(f"{'└──' if is_last else '├──'} {label}: {value}")
+
+    if step.usage is not None:
+        usage_lines = [
+            (
+                f"prompt={step.usage.prompt_tokens} "
+                f"completion={step.usage.completion_tokens} total={step.usage.total_tokens}"
+            )
+        ]
+        cache_counts = []
+        if step.usage.cache_hit_tokens is not None:
+            cache_counts.append(f"cache_hit={step.usage.cache_hit_tokens}")
+        if step.usage.cache_miss_tokens is not None:
+            cache_counts.append(f"cache_miss={step.usage.cache_miss_tokens}")
+        if cache_counts:
+            usage_lines.append(" ".join(cache_counts))
+
+        lines.append("└── usage")
+        for index, value in enumerate(usage_lines):
+            connector = "└──" if index == len(usage_lines) - 1 else "├──"
+            lines.append(f"    {connector} {value}")
+
+    print("\n".join(lines), flush=True)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -56,19 +85,23 @@ def main(argv: list[str] | None = None) -> None:
         device_id = ready[0].device_id
 
     model = OpenAICompatibleDecisionModel(config)
-    try:
-        planner = PlannerEngine(
-            model,
-            max_actions=max_actions,
-            max_seconds=max_seconds,
-            settle_seconds=settle_seconds,
-            on_step=_report_step,
-        )
-    except ValueError as exc:
-        raise SystemExit(f"Invalid run limits: {exc}") from exc
-
     with backend.open(device_id) as device:
-        result = planner.run(task, device)
+        try:
+            session = PlannerSession(
+                model,
+                task,
+                device,
+                max_actions=max_actions,
+                max_seconds=max_seconds,
+                settle_seconds=settle_seconds,
+                on_step=_report_step,
+            )
+        except ValueError as exc:
+            raise SystemExit(f"Invalid run limits: {exc}") from exc
+        while True:
+            result = session.step()
+            if result.terminal:
+                break
     print(f"status={result.status.value}; actions={len(result.steps)}")
     print(result.message)
     if not result.completed:

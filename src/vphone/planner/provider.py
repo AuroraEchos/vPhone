@@ -3,60 +3,15 @@
 from __future__ import annotations
 
 import base64
-import json
+from dataclasses import replace
 
 from openai import OpenAI, OpenAIError
-from rich.console import Console
-from rich.tree import Tree
 
-from vphone.action.models import KeyAction, SwipeAction, TapAction, TextAction, WaitAction
 from vphone.perception.models import PageObservation
 from vphone.planner.config import ModelConfig
 from vphone.planner.errors import InvalidDecisionError, ModelError
-from vphone.planner.models import Decision, StepRecord
+from vphone.planner.models import Decision, StepRecord, TokenUsage
 from vphone.planner.tools import parse_tool_call, tools_for_screen
-
-
-def print_chat_completion_rich(response) -> None:
-    console = Console()
-    root = Tree(f"[bold]ChatCompletion[/] id={response.id} model={response.model}")
-
-    for ci, choice in enumerate(response.choices):
-        c = root.add(f"Choice[{ci}] finish_reason=[green]{choice.finish_reason}[/]")
-        msg = choice.message
-
-        m = c.add(f"message role={msg.role}")
-        m.add(f"content={msg.content!r}")
-
-        rc = getattr(msg, "reasoning_content", None)
-        if rc:
-            m.add(f"reasoning_content={rc!r}")
-
-        for ti, call in enumerate(msg.tool_calls or []):
-            t = m.add(f"tool_call[{ti}] type={call.type} id={call.id}")
-            f = t.add(f"function name=[cyan]{call.function.name}[/]")
-
-            raw = call.function.arguments
-            # 尝试美化 JSON，失败则原样输出（仍不截断）
-            try:
-                pretty = json.dumps(json.loads(raw), ensure_ascii=False, indent=2)
-            except (json.JSONDecodeError, TypeError):
-                pretty = raw
-            f.add(f"arguments={pretty}")
-
-    u = getattr(response, "usage", None)
-    if u:
-        n = root.add("usage")
-        n.add(
-            f"prompt={u.prompt_tokens} completion={u.completion_tokens} total={u.total_tokens}"
-        )
-        if getattr(u, "prompt_cache_hit_tokens", None) is not None:
-            n.add(
-                f"cache_hit={u.prompt_cache_hit_tokens} "
-                f"cache_miss={u.prompt_cache_miss_tokens}"
-            )
-
-    console.print(root)
 
 _INSTRUCTIONS = """You operate an Android phone using ONLY the current screenshot and the task.
 The screenshot is the only source of current page truth. It is the FULL image, not a crop.
@@ -80,36 +35,43 @@ visible on the current home page, search an adjacent page with one horizontal sw
 instead of assuming that a vertical swipe opens an app drawer. Use the trajectory to avoid
 revisiting the same page; if one direction does not help, try the opposite direction.
 Use finish only if the current screenshot visibly supports your answer.
-If uncertain, call stop. Before sending, deleting, purchasing or another consequential
-action, call request_confirmation. Never invent controls or invisible page content.
+This device is a controlled test environment. Do not pause for user confirmation; carry out
+actions explicitly required by the task, including sending or deleting when requested.
+If uncertain, call stop. Never invent controls or invisible page content.
 """
+
+
+def _token_usage(response: object) -> TokenUsage | None:
+    """Extract portable token counts without making diagnostics response-critical."""
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return None
+    prompt = getattr(usage, "prompt_tokens", None)
+    completion = getattr(usage, "completion_tokens", None)
+    total = getattr(usage, "total_tokens", None)
+    if any(type(value) is not int or value < 0 for value in (prompt, completion, total)):
+        return None
+
+    def optional_count(name: str) -> int | None:
+        value = getattr(usage, name, None)
+        return value if type(value) is int and value >= 0 else None
+
+    return TokenUsage(
+        prompt,
+        completion,
+        total,
+        optional_count("prompt_cache_hit_tokens"),
+        optional_count("prompt_cache_miss_tokens"),
+    )
 
 
 def _history_line(index: int, step: StepRecord) -> str:
     """Render one task-aware trajectory entry without sensitive action details."""
-    action = step.action
-    if isinstance(action, TapAction):
-        description = "tap"
-    elif isinstance(action, SwipeAction):
-        description = "swipe"
-    elif isinstance(action, KeyAction):
-        description = (
-            f"press_key({action.key.name})" if hasattr(action.key, "name") else "press_key"
-        )
-    elif isinstance(action, TextAction):
-        description = f"input_text({len(action.text)} characters)"
-    elif isinstance(action, WaitAction):
-        description = f"wait({action.seconds:g} seconds)"
-    else:
-        description = "unknown_action"
-    if isinstance(action, WaitAction):
-        outcome = "wait completed" if step.result.completed else "wait failed"
-    else:
-        outcome = "device command completed" if step.result.completed else "device command failed"
     return (
         f"{index}. Saw: {step.trace.screen_summary} "
         f"Decision: {step.trace.decision_reason} "
-        f"Action: {description}; result: {outcome}; UI effect was not verified at that time"
+        f"Action: {step.describe_action()}; result: {step.result_description}; "
+        "UI effect was not verified at that time"
     )
 
 
@@ -166,6 +128,7 @@ class OpenAICompatibleDecisionModel:
             f"Coordinates must be screenshot pixels: x=0..{screen.width - 1}, "
             f"y=0..{screen.height - 1}."
         )
+        accumulated_usage: TokenUsage | None = None
         for attempt in range(2):
             try:
                 image_url = {"url": f"data:image/png;base64,{encoded}"}
@@ -193,7 +156,13 @@ class OpenAICompatibleDecisionModel:
                 if self._config.reasoning_effort is not None:
                     request_options["reasoning_effort"] = self._config.reasoning_effort
                 response = self._client.chat.completions.create(**request_options)
-                print_chat_completion_rich(response)
+                current_usage = _token_usage(response)
+                if current_usage is not None:
+                    accumulated_usage = (
+                        current_usage
+                        if accumulated_usage is None
+                        else accumulated_usage + current_usage
+                    )
             except OpenAIError as exc:
                 raise ModelError("model request failed") from exc
 
@@ -203,7 +172,12 @@ class OpenAICompatibleDecisionModel:
                 calls = response.choices[0].message.tool_calls
                 if calls is None or len(calls) != 1 or calls[0].type != "function":
                     raise InvalidDecisionError("model must return exactly one function call")
-                return parse_tool_call(calls[0].function.name, calls[0].function.arguments, screen)
+                decision = parse_tool_call(
+                    calls[0].function.name,
+                    calls[0].function.arguments,
+                    screen,
+                )
+                return replace(decision, usage=accumulated_usage)
             except InvalidDecisionError as exc:
                 if attempt == 1:
                     raise

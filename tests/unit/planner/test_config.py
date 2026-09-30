@@ -9,7 +9,7 @@ from vphone.planner.config import ModelConfig
 
 def test_model_config_reads_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Load endpoint and request options without a hard-coded provider."""
-    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("VPHONE_API_KEY", "test-key")
     monkeypatch.setenv("VPHONE_MODEL_BASE_URL", "https://example.test/v1")
     monkeypatch.setenv("VPHONE_MODEL_ID", "vision-test")
     monkeypatch.setenv("VPHONE_MODEL_TIMEOUT_SECONDS", "45")

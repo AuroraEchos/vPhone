@@ -12,7 +12,6 @@ from vphone.planner.coordinates import to_screen_point
 from vphone.planner.errors import InvalidDecisionError
 from vphone.planner.models import (
     ActionDecision,
-    ConfirmationDecision,
     DecisionTrace,
     FinishDecision,
     StopDecision,
@@ -50,7 +49,8 @@ def test_every_tool_requires_task_aware_trace_fields(screen: ScreenFrame) -> Non
     """Require screen meaning and decision intent for every possible decision."""
     tools = tools_for_screen(screen)
 
-    assert len(tools) == 8
+    assert len(tools) == 7
+    assert all(tool["function"]["name"] != "request_confirmation" for tool in tools)
     for tool in tools:
         parameters = tool["function"]["parameters"]
         assert "screen_summary" in parameters["properties"]
@@ -87,9 +87,6 @@ def test_parse_supported_tools(screen: ScreenFrame) -> None:
     assert parse_tool_call("stop", _args(reason="unknown"), screen) == StopDecision(
         "unknown", TRACE
     )
-    assert parse_tool_call(
-        "request_confirmation", _args(question="Proceed?"), screen
-    ) == ConfirmationDecision("Proceed?", TRACE)
 
 
 def test_wait_tool_advertises_and_enforces_upper_cap(screen: ScreenFrame) -> None:

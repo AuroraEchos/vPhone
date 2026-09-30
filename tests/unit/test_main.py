@@ -10,8 +10,15 @@ from types import SimpleNamespace
 import pytest
 
 import vphone.main as cli
-from vphone.action import ActionKind, ActionResult, TextAction
-from vphone.planner.models import DecisionTrace, RunResult, RunStatus, StepRecord
+from vphone.action import ActionKind, ActionResult, TapAction, TextAction
+from vphone.device import Point
+from vphone.planner.models import (
+    DecisionTrace,
+    SessionResult,
+    SessionStatus,
+    StepRecord,
+    TokenUsage,
+)
 
 
 def test_console_entry_point_targets_main() -> None:
@@ -28,7 +35,7 @@ def test_main_wires_task_config_device_and_planner(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "find_dotenv", lambda **kwargs: "")
     monkeypatch.setattr(cli, "load_dotenv", lambda path: None)
-    monkeypatch.setenv("API_KEY", "test-key")
+    monkeypatch.setenv("VPHONE_API_KEY", "test-key")
     monkeypatch.setenv("VPHONE_MODEL_BASE_URL", "https://example.test/v1")
     monkeypatch.setenv("VPHONE_MODEL_ID", "vision-test")
     monkeypatch.setenv("VPHONE_MAX_ACTIONS", "3")
@@ -55,22 +62,22 @@ def test_main_wires_task_config_device_and_planner(
         observed["config"] = config
         return object()
 
-    def fake_planner(model, **options):
-        """Capture limits and return a successful task result."""
-        observed["planner_model"] = model
+    def fake_session(model, task, device, **options):
+        """Capture limits and return a successful single-step session."""
+        observed["session_model"] = model
+        observed["task"] = task
+        observed["device"] = device
         observed["options"] = options
 
-        def run(task, device):
-            """Record the task and device selected by the entry point."""
-            observed["task"] = task
-            observed["device"] = device
-            return RunResult(RunStatus.FINISHED, "Battery 80%", (), None)
+        def step():
+            """Finish without touching the synthetic device."""
+            return SessionResult(SessionStatus.FINISHED, "Battery 80%", (), None)
 
-        return SimpleNamespace(run=run)
+        return SimpleNamespace(step=step)
 
     monkeypatch.setattr(cli, "AdbDeviceBackend", FakeBackend)
     monkeypatch.setattr(cli, "OpenAICompatibleDecisionModel", fake_model)
-    monkeypatch.setattr(cli, "PlannerEngine", fake_planner)
+    monkeypatch.setattr(cli, "PlannerSession", fake_session)
 
     cli.main(["查看当前电量"])
 
@@ -106,7 +113,7 @@ def test_configuration_failure_does_not_create_trace(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(cli, "find_dotenv", lambda **kwargs: "")
     monkeypatch.setattr(cli, "load_dotenv", lambda path: None)
-    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setenv("VPHONE_API_KEY", "")
     monkeypatch.setenv("VPHONE_MODEL_ID", "vision-test")
 
     with pytest.raises(SystemExit, match="Invalid model or runtime configuration"):
@@ -116,7 +123,7 @@ def test_configuration_failure_does_not_create_trace(
 
 
 def test_progress_output_hides_text_input(capsys: pytest.CaptureFixture[str]) -> None:
-    """Never print the contents of a text action in progress logs."""
+    """Print structured step context without exposing typed text."""
     step = StepRecord(
         "obs",
         "a" * 64,
@@ -126,5 +133,32 @@ def test_progress_output_hides_text_input(capsys: pytest.CaptureFixture[str]) ->
     )
     cli._report_step(step)
     output = capsys.readouterr().out
-    assert "TextAction" in output
+    assert output.startswith("Step completed\n")
+    assert "├── screen_summary: A text field is focused" in output
+    assert "├── decision_reason: Enter the requested value" in output
+    assert "├── action: input_text(13 characters)" in output
+    assert "├── result: device command completed" in output
+    assert output.endswith("└── duration: 0.100s\n")
     assert "private value" not in output
+
+
+def test_progress_output_includes_current_action_coordinates(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Expose current-step coordinates locally without adding them to model history."""
+    step = StepRecord(
+        "obs",
+        "a" * 64,
+        TapAction(Point(12, 34)),
+        ActionResult(ActionKind.TAP, 0.25),
+        DecisionTrace("A settings page", "Open the visible battery row"),
+        TokenUsage(3593, 129, 3722, 2304, 1289),
+    )
+
+    cli._report_step(step)
+
+    output = capsys.readouterr().out
+    assert "├── action: tap(x=12, y=34)" in output
+    assert "├── duration: 0.250s" in output
+    assert "└── usage\n    ├── prompt=3593 completion=129 total=3722" in output
+    assert output.endswith("    └── cache_hit=2304 cache_miss=1289\n")
