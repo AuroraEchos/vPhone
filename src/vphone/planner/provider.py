@@ -23,6 +23,9 @@ and a concise decision_reason that connects the decision to the task and prior t
 Do not copy passwords, tokens, or other sensitive values into either trajectory field.
 Treat prior trajectory as past context only; the current screenshot is authoritative.
 After an action, a new screenshot will be captured and you will decide again.
+Use input_text to insert text at the current cursor or selection. If the currently focused
+field already contains a value that must be completely changed, use replace_text so the old
+content is fully replaced; do not manually long-press, select all, or delete it character by character.
 If the current screenshot visibly shows a loading indicator or another in-progress state,
 use wait for a short duration before inspecting a fresh screenshot. Do not wait merely because
 an expected control is absent, and do not repeat waits when the screen is no longer loading.
@@ -30,10 +33,10 @@ Do not assume a prior action changed the screen; inspect the current screenshot.
 Use the trajectory to understand why you reached the current screen. If the current screenshot
 shows that the latest attempt did not achieve its stated purpose, do not repeat the same action
 for the same reason; choose a different visible strategy or stop if none is justified.
-An Android home screen may have several horizontally paged screens. If the target app is not
-visible on the current home page, search an adjacent page with one horizontal swipe left or right
-instead of assuming that a vertical swipe opens an app drawer. Use the trajectory to avoid
-revisiting the same page; if one direction does not help, try the opposite direction.
+This phone uses Google Pixel Launcher. On the home screen, swiping up opens the app drawer
+that contains the installed apps. If the target app is not visible on the current home screen,
+swipe up immediately to open the app drawer and look for it there. Do not waste actions swiping
+horizontally between home pages to search for apps.
 Use finish only if the current screenshot visibly supports your answer.
 This device is a controlled test environment. Do not pause for user confirmation; carry out
 actions explicitly required by the task, including sending or deleting when requested.

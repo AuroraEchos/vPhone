@@ -8,6 +8,7 @@ from typing import Any
 from vphone.action.models import (
     MAX_WAIT_SECONDS,
     KeyAction,
+    ReplaceTextAction,
     SwipeAction,
     TapAction,
     TextAction,
@@ -100,7 +101,12 @@ def tools_for_screen(screen: ScreenFrame) -> list[dict[str, Any]]:
         ),
         _tool(
             "input_text",
-            "Type printable text into the currently focused input field.",
+            "Insert printable text at the cursor or selection in the currently focused field.",
+            {"text": {"type": "string"}},
+        ),
+        _tool(
+            "replace_text",
+            "Replace all existing content in the currently focused field with printable text.",
             {"text": {"type": "string"}},
         ),
         _tool(
@@ -158,6 +164,7 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         "swipe": {"start_x", "start_y", "end_x", "end_y", "duration_ms"},
         "press_key": {"key"},
         "input_text": {"text"},
+        "replace_text": {"text"},
         "wait": {"seconds"},
         "finish": {"answer"},
         "stop": {"reason"},
@@ -201,6 +208,7 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
 
     field = {
         "input_text": "text",
+        "replace_text": "text",
         "finish": "answer",
         "stop": "reason",
     }[name]
@@ -211,6 +219,10 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
         if not value.isprintable():
             raise InvalidDecisionError("input text must be printable")
         return ActionDecision(TextAction(value), trace)
+    if name == "replace_text":
+        if not value.isprintable():
+            raise InvalidDecisionError("replacement text must be printable")
+        return ActionDecision(ReplaceTextAction(value), trace)
     if name == "finish":
         return FinishDecision(value, trace)
     if name == "stop":

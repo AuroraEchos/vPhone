@@ -24,9 +24,9 @@ class FakeRunner:
         if args[0] == "shell" and "settings get" in args[1]:
             stdout = b"com.example.ime/.Keyboard\n"
             if self.installed:
-                stdout += b"package:dev.vphone.input versionCode:3\n"
+                stdout += b"package:dev.vphone.input versionCode:4\n"
         elif args[0] == "shell" and "cmd package list" in args[1]:
-            stdout = b"package:dev.vphone.input versionCode:3\n" if self.installed else b""
+            stdout = b"package:dev.vphone.input versionCode:4\n" if self.installed else b""
         elif args[:3] == ("shell", "am", "broadcast"):
             stdout = self.broadcast
         else:
@@ -74,6 +74,21 @@ def test_input_text_commits_all_text_through_the_ime(text: str) -> None:
     assert base64.b64decode(encoded).decode("utf-8") == text
     assert not any("uiautomator" in call[0] for call in runner.calls)
     assert not any(call[0][:3] == ("shell", "input", "text") for call in runner.calls)
+
+
+def test_replace_text_requests_atomic_editor_replacement() -> None:
+    """Send replacement text through the helper's dedicated action."""
+    runner = FakeRunner()
+
+    result = adb_input.replace_text(runner, "serial", "new value")
+
+    assert result.operation == "replace_text"
+    broadcast = next(
+        call[0] for call in runner.calls if call[0][:3] == ("shell", "am", "broadcast")
+    )
+    assert "dev.vphone.input.REPLACE_TEXT" in broadcast
+    encoded = broadcast[broadcast.index("text_base64") + 1]
+    assert base64.b64decode(encoded).decode("utf-8") == "new value"
 
 
 def test_input_text_selects_and_restores_the_previous_ime() -> None:

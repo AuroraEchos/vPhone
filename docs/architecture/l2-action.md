@@ -3,7 +3,7 @@
 | 属性 | 内容 |
 | --- | --- |
 | 状态 | 已实现，开发阶段；以当前代码为准 |
-| 范围 | 五类具体动作的数据模型、单次派发、结果与错误表达 |
+| 范围 | 六类具体动作的数据模型、单次派发、结果与错误表达 |
 | 对上接口 | `vphone.action` 中的 `ActionExecutor`、`Action` / `ActionResult` |
 | 对下依赖 | L1 `DeviceSession` 协议；不依赖具体 ADB 实现 |
 | 主要实现 | [`src/vphone/action/models.py`](../../src/vphone/action/models.py)、[`executor.py`](../../src/vphone/action/executor.py) |
@@ -30,16 +30,16 @@ Android 当前界面（效果仍需重新观测）
 
 | L2 负责 | L2 不负责 |
 | --- | --- |
-| 建模并校验点击、滑动、按键、文本、等待五类动作 | 从用户自然语言生成动作；识别截图内容或视觉目标 |
+| 建模并校验点击、滑动、按键、文本插入、文本替换、等待六类动作 | 从用户自然语言生成动作；识别截图内容或视觉目标 |
 | 将设备动作派发到 `DeviceSession`，或执行一次本地等待 | 判断坐标是否命中目标、页面是否稳定、是否出现弹窗 |
 | 对设备运行故障返回 `ActionResult.error`，记录动作种类和耗时 | 吞掉调用方编程错误、自动重试或回滚可能已生效的输入 |
 | 允许调用方设置一次设备动作的超时 | 动作序列、条件分支、任务状态和 VLM 决策 |
 
-L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作。例如 `TextAction` 不会寻找输入框或自动点击焦点；调用前应已确认当前焦点。未来若要新增“点击视觉目标”等复合能力，应先明确属于 L3 定位、L4 规划还是 L2 原语，而不是让执行器隐式承担感知工作。
+L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作。例如 `TextAction` 与 `ReplaceTextAction` 都不会寻找输入框或自动点击焦点；调用前应已确认当前焦点。未来若要新增“点击视觉目标”等复合能力，应先明确属于 L3 定位、L4 规划还是 L2 原语，而不是让执行器隐式承担感知工作。
 
 ## 3. 公开数据契约
 
-动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是五种动作的联合类型。
+动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是六种动作的联合类型。
 
 | 动作 | 参数 | 校验 | L1 派发目标 |
 | --- | --- | --- | --- |
@@ -47,11 +47,12 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 | `SwipeAction` | `start: Point`、`end: Point`、`duration_ms=300` | 起终点为 `Point`，持续时间为 1–10000 ms 的整数 | `device.swipe(start, end, duration_ms=...)` |
 | `KeyAction` | `key: KeyCode \| int` | 预定义键或非负整数；布尔值不算整数键码 | `device.key_event(key)` |
 | `TextAction` | `text: str` | 非空、可打印字符串 | `device.input_text(text)` |
+| `ReplaceTextAction` | `text: str` | 非空、可打印字符串 | `device.replace_text(text)` |
 | `WaitAction` | `seconds: float` | 有限正数；超过 30 秒时裁剪为 30 秒 | 本地 `time.sleep(seconds)`，不调用设备 |
 
-`Point` 来自 L1，表示设备屏幕像素坐标；类型与非负性校验不等于屏幕内校验。上层应依据**最近一次有效观测**的尺寸和目标边界选择坐标，并考虑页面滚动、动画与旋转造成的失效。`TextAction` 的 `repr` 隐藏文本字段，但这只降低误打印风险，不构成完整的敏感数据保护；文本仍传给 L1、ADB 及设备。
+`Point` 来自 L1，表示设备屏幕像素坐标；类型与非负性校验不等于屏幕内校验。上层应依据**最近一次有效观测**的尺寸和目标边界选择坐标，并考虑页面滚动、动画与旋转造成的失效。`TextAction` 与 `ReplaceTextAction` 的 `repr` 都隐藏文本字段，但这只降低误打印风险，不构成完整的敏感数据保护；文本仍传给 L1、ADB 及设备。
 
-`ActionKind` 分别为 `tap`、`swipe`、`key`、`text`、`wait`。`ActionResult` 字段含义如下：
+`ActionKind` 分别为 `tap`、`swipe`、`key`、`text`、`replace_text`、`wait`。`ActionResult` 字段含义如下：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -75,7 +76,7 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 | 动作 | `timeout=None` 时继承的 L1 默认值 |
 | --- | ---: |
 | 点击 / 滑动 / 按键 | 5 s |
-| 文本 | 10 s |
+| 文本插入 / 替换 | 10 s |
 
 显式 `timeout` 原样传给 L1。这个值不是 L2 另起的一层“强制截止时间”；L1 的锁等待、本地解码与多步清理等阶段可能使实际墙上耗时超过数值。`ActionResult.duration_seconds` 与 `PrimitiveResult.duration_seconds` 的测量范围不同，不应直接当作相同指标比较：前者覆盖 L2 调用整体，后者取决于各 L1 原语的实现。
 
@@ -114,7 +115,7 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 ## 6. 使用示例
 
 ```python
-from vphone.action import ActionExecutor, KeyAction, TapAction, TextAction
+from vphone.action import ActionExecutor, KeyAction, ReplaceTextAction, TapAction, TextAction
 from vphone.device import AdbDeviceBackend, KeyCode, Point
 
 with AdbDeviceBackend().open("your-device-id") as device:
@@ -132,6 +133,7 @@ with AdbDeviceBackend().open("your-device-id") as device:
 
     # 仅在已确认焦点为目标输入框时执行。
     # result = executor.execute(TextAction("hello"))
+    # result = executor.execute(ReplaceTextAction("new value"))
 ```
 
 示例没有自动选设备、等待页面或判断截图内容；这些行为应由未来上层明确实现。生产调用方还应避免把用户输入文本和完整异常直接写入未经脱敏的日志。
@@ -140,7 +142,7 @@ with AdbDeviceBackend().open("your-device-id") as device:
 
 | 验证层 | 覆盖重点 |
 | --- | --- |
-| 单元测试 | 四种模型的类型/边界校验；协议替身上的派发、默认与显式超时、设备错误保留、无重试 |
+| 单元测试 | 六种模型的类型/边界校验；协议替身上的派发、默认与显式超时、设备错误保留、无重试 |
 | 真机集成测试 | 经 L2 发送 HOME 键，再经 L1 采集 PNG；验证跨层基本链路 |
 | 手工检查 | 在受控页面测试坐标和文本输入，并通过新截图核对实际效果；自动集成测试目前不覆盖全部 UI 语义 |
 

@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
-from vphone.action import ActionKind, ActionResult, SwipeAction, TapAction, TextAction, WaitAction
+from vphone.action import (
+    ActionKind,
+    ActionResult,
+    ReplaceTextAction,
+    SwipeAction,
+    TapAction,
+    TextAction,
+    WaitAction,
+)
 from vphone.device import Point, PrimitiveResult, ScreenFrame
 from vphone.planner.errors import InvalidDecisionError
 from vphone.planner.models import (
@@ -226,6 +234,13 @@ def test_step_record_describes_actions_without_exposing_text() -> None:
         ActionResult(ActionKind.TEXT, 0.1),
         TRACE,
     )
+    replacement = StepRecord(
+        "obs-replace",
+        "c" * 64,
+        ReplaceTextAction("new private value"),
+        ActionResult(ActionKind.REPLACE_TEXT, 0.1),
+        TRACE,
+    )
     swipe = StepRecord(
         "obs-swipe",
         "b" * 64,
@@ -236,6 +251,8 @@ def test_step_record_describes_actions_without_exposing_text() -> None:
 
     assert text.describe_action() == "input_text(13 characters)"
     assert "private value" not in text.describe_action(include_coordinates=True)
+    assert replacement.describe_action() == "replace_text(17 characters)"
+    assert "new private value" not in replacement.describe_action()
     assert swipe.describe_action() == "swipe"
     assert swipe.describe_action(include_coordinates=True) == (
         "swipe(start=(10, 20), end=(30, 40), duration_ms=350)"

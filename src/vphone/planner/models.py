@@ -9,6 +9,7 @@ from vphone.action.models import (
     Action,
     ActionResult,
     KeyAction,
+    ReplaceTextAction,
     SwipeAction,
     TapAction,
     TextAction,
@@ -139,6 +140,8 @@ class StepRecord:
             return f"press_key({key})"
         if isinstance(action, TextAction):
             return f"input_text({len(action.text)} characters)"
+        if isinstance(action, ReplaceTextAction):
+            return f"replace_text({len(action.text)} characters)"
         if isinstance(action, WaitAction):
             return f"wait({action.seconds:g} seconds)"
         return "unknown_action"

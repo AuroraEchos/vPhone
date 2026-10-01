@@ -122,8 +122,12 @@ def test_provider_sends_png_as_original_and_returns_validated_action(capsys) -> 
     assert image["url"].startswith("data:image/png;base64,")
     instructions = completions.kwargs["messages"][0]["content"]
     assert "do not repeat the same action" in instructions
-    assert "several horizontally paged screens" in instructions
-    assert "instead of assuming that a vertical swipe opens an app drawer" in instructions
+    assert "This phone uses Google Pixel Launcher" in instructions
+    assert "swiping up opens the app drawer" in instructions
+    assert "Do not waste actions" in instructions
+    assert "between home pages to search for apps" in instructions
+    assert "use replace_text" in instructions
+    assert any(item["function"]["name"] == "replace_text" for item in completions.kwargs["tools"])
     assert "Do not pause for user confirmation" in instructions
     assert "sending or deleting when requested" in instructions
     assert all(

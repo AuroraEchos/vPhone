@@ -10,7 +10,7 @@ from types import SimpleNamespace
 import pytest
 
 import vphone.main as cli
-from vphone.action import ActionKind, ActionResult, TapAction, TextAction
+from vphone.action import ActionKind, ActionResult, ReplaceTextAction, TapAction, TextAction
 from vphone.device import Point
 from vphone.planner.models import (
     DecisionTrace,
@@ -140,6 +140,23 @@ def test_progress_output_hides_text_input(capsys: pytest.CaptureFixture[str]) ->
     assert "├── result: device command completed" in output
     assert output.endswith("└── duration: 0.100s\n")
     assert "private value" not in output
+
+
+def test_progress_output_hides_replacement_text(capsys: pytest.CaptureFixture[str]) -> None:
+    """Describe replacement length without exposing replacement text."""
+    step = StepRecord(
+        "obs",
+        "a" * 64,
+        ReplaceTextAction("replacement value"),
+        ActionResult(ActionKind.REPLACE_TEXT, 0.1),
+        DecisionTrace("A populated field is focused", "Replace its existing value"),
+    )
+
+    cli._report_step(step)
+
+    output = capsys.readouterr().out
+    assert "replace_text(17 characters)" in output
+    assert "replacement value" not in output
 
 
 def test_progress_output_includes_current_action_coordinates(

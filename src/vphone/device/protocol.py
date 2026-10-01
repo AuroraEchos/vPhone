@@ -50,6 +50,10 @@ class DeviceSession(Protocol):
         """Type printable text into the currently focused field."""
         ...
 
+    def replace_text(self, text: str, *, timeout: float = 10.0) -> PrimitiveResult:
+        """Replace all text in the currently focused field."""
+        ...
+
     def close(self) -> None:
         """Close this session and prevent further use."""
         ...

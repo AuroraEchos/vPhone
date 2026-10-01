@@ -14,8 +14,9 @@ from vphone.device.models import KeyCode, Point, PrimitiveResult
 _IME_HELPER = "resources/vphone-ime-input.apk"
 _IME_PACKAGE = "dev.vphone.input"
 _IME_SERVICE = "dev.vphone.input/.VPhoneInputMethodService"
-_IME_ACTION = "dev.vphone.input.COMMIT_TEXT"
-_IME_VERSION_CODE = 3
+_IME_COMMIT_ACTION = "dev.vphone.input.COMMIT_TEXT"
+_IME_REPLACE_ACTION = "dev.vphone.input.REPLACE_TEXT"
+_IME_VERSION_CODE = 4
 _BROADCAST_RESULT = re.compile(rb"Broadcast completed: result=(-?\d+)(?:, data=\"([^\"]*)\")?")
 _IME_COMPONENT = re.compile(r"^[A-Za-z0-9._]+/[A-Za-z0-9._$]+$")
 
@@ -145,6 +146,58 @@ def input_text(
         InputError: If text is invalid, no editor is focused, or the editor rejects it.
         DeviceCommandTimeoutError: If the overall budget is exhausted.
     """
+    return _edit_text(
+        runner,
+        serial,
+        text,
+        timeout=timeout,
+        action=_IME_COMMIT_ACTION,
+        operation="input_text",
+    )
+
+
+def replace_text(
+    runner: AdbRunner,
+    serial: str,
+    text: str,
+    *,
+    timeout: float = 10.0,
+) -> PrimitiveResult:
+    """Replace all text through the focused editor's input connection.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        text: Printable replacement text.
+        timeout: Overall timeout budget in seconds.
+
+    Returns:
+        The completed replacement primitive and its duration.
+
+    Raises:
+        InputError: If text is invalid, no editor is focused, or replacement is rejected.
+        DeviceCommandTimeoutError: If the overall budget is exhausted.
+    """
+    return _edit_text(
+        runner,
+        serial,
+        text,
+        timeout=timeout,
+        action=_IME_REPLACE_ACTION,
+        operation="replace_text",
+    )
+
+
+def _edit_text(
+    runner: AdbRunner,
+    serial: str,
+    text: str,
+    *,
+    timeout: float,
+    action: str,
+    operation: str,
+) -> PrimitiveResult:
+    """Run one validated editor operation while preserving the selected IME."""
     if not isinstance(text, str) or not text:
         raise InputError("text must be a non-empty string")
     if not text.isprintable():
@@ -166,7 +219,7 @@ def input_text(
     try:
         if switched:
             _select_ime_helper(runner, serial, deadline=deadline)
-        _commit_text(runner, serial, text, deadline=deadline)
+        _send_text(runner, serial, text, action=action, deadline=deadline)
     except DeviceError as exc:
         operation_error = exc
     finally:
@@ -184,7 +237,7 @@ def input_text(
         raise InputError(
             "text was committed but the previous input method was not restored"
         ) from restore_error
-    return PrimitiveResult("input_text", time.monotonic() - started)
+    return PrimitiveResult(operation, time.monotonic() - started)
 
 
 def prepare_text_input(
@@ -272,14 +325,15 @@ def _select_ime_helper(
     )
 
 
-def _commit_text(
+def _send_text(
     runner: AdbRunner,
     serial: str,
     text: str,
     *,
+    action: str,
     deadline: float,
 ) -> None:
-    """Send text to the helper and require an acknowledged editor commit."""
+    """Send an editor operation to the helper and require acknowledgement."""
     encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
     while True:
         result = runner.run(
@@ -291,7 +345,7 @@ def _commit_text(
                 "-p",
                 _IME_PACKAGE,
                 "-a",
-                _IME_ACTION,
+                action,
                 "--es",
                 "text_base64",
                 encoded,

@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from vphone.action import KeyAction, SwipeAction, TapAction, TextAction, WaitAction
+from vphone.action import (
+    KeyAction,
+    ReplaceTextAction,
+    SwipeAction,
+    TapAction,
+    TextAction,
+    WaitAction,
+)
 from vphone.device import Point
 
 
@@ -32,10 +39,14 @@ def test_text_rejects_control_characters() -> None:
     with pytest.raises(ValueError, match="printable"):
         TextAction("first\nsecond")
 
+    with pytest.raises(ValueError, match="printable"):
+        ReplaceTextAction("first\nsecond")
+
 
 def test_text_is_hidden_from_default_representation() -> None:
     """Verify text is hidden from default representation."""
     assert "secret" not in repr(TextAction("secret"))
+    assert "replacement" not in repr(ReplaceTextAction("replacement"))
 
 
 def test_wait_caps_requested_duration() -> None:

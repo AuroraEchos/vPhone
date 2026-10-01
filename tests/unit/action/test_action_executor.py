@@ -8,6 +8,7 @@ from vphone.action import (
     ActionExecutor,
     ActionKind,
     KeyAction,
+    ReplaceTextAction,
     SwipeAction,
     TapAction,
     TextAction,
@@ -45,6 +46,10 @@ class FakeDevice:
         """Record a text-input request."""
         return self._record("input_text", (text,), kwargs)
 
+    def replace_text(self, text: str, **kwargs) -> PrimitiveResult:
+        """Record a text-replacement request."""
+        return self._record("replace_text", (text,), kwargs)
+
 
 @pytest.mark.parametrize(
     ("action", "kind", "operation", "args", "kwargs"),
@@ -59,6 +64,13 @@ class FakeDevice:
         ),
         (KeyAction(KeyCode.BACK), ActionKind.KEY, "key_event", (KeyCode.BACK,), {}),
         (TextAction("你好"), ActionKind.TEXT, "input_text", ("你好",), {}),
+        (
+            ReplaceTextAction("新内容"),
+            ActionKind.REPLACE_TEXT,
+            "replace_text",
+            ("新内容",),
+            {},
+        ),
     ],
 )
 def test_executor_dispatches_supported_actions(action, kind, operation, args, kwargs) -> None:

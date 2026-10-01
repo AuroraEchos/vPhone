@@ -17,6 +17,7 @@ class ActionKind(StrEnum):
     SWIPE = "swipe"
     KEY = "key"
     TEXT = "text"
+    REPLACE_TEXT = "replace_text"
     WAIT = "wait"
 
 
@@ -66,12 +67,28 @@ class TextAction:
 
     def __post_init__(self) -> None:
         """Require nonempty, printable text without exposing it in ``repr``."""
-        if not isinstance(self.text, str):
-            raise TypeError("text must be a string")
-        if not self.text:
-            raise ValueError("text cannot be empty")
-        if not self.text.isprintable():
-            raise ValueError("text must contain printable characters only")
+        _validate_text(self.text)
+
+
+@dataclass(frozen=True, slots=True)
+class ReplaceTextAction:
+    """Replace all text in the currently focused editor."""
+
+    text: str = field(repr=False)
+
+    def __post_init__(self) -> None:
+        """Require nonempty, printable replacement text."""
+        _validate_text(self.text)
+
+
+def _validate_text(text: str) -> None:
+    """Validate text shared by insertion and replacement actions."""
+    if not isinstance(text, str):
+        raise TypeError("text must be a string")
+    if not text:
+        raise ValueError("text cannot be empty")
+    if not text.isprintable():
+        raise ValueError("text must contain printable characters only")
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,7 +104,7 @@ class WaitAction:
         object.__setattr__(self, "seconds", min(float(self.seconds), MAX_WAIT_SECONDS))
 
 
-Action = TapAction | SwipeAction | KeyAction | TextAction | WaitAction
+Action = TapAction | SwipeAction | KeyAction | TextAction | ReplaceTextAction | WaitAction
 
 
 @dataclass(frozen=True, slots=True)

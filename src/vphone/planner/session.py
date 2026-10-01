@@ -10,6 +10,7 @@ from vphone.action import ActionExecutor
 from vphone.action.models import (
     ActionKind,
     KeyAction,
+    ReplaceTextAction,
     SwipeAction,
     TapAction,
     TextAction,
@@ -171,6 +172,8 @@ def _kind_of(action) -> ActionKind:
         return ActionKind.KEY
     if isinstance(action, TextAction):
         return ActionKind.TEXT
+    if isinstance(action, ReplaceTextAction):
+        return ActionKind.REPLACE_TEXT
     if isinstance(action, WaitAction):
         return ActionKind.WAIT
     raise TypeError("action must be a supported L2 action")

@@ -179,6 +179,22 @@ class AdbDeviceSession:
                 self._runner, self.descriptor.device_id, text, timeout=timeout
             )
 
+    def replace_text(self, text: str, *, timeout: float = 10.0) -> PrimitiveResult:
+        """Replace all text in the currently focused device field.
+
+        Args:
+            text: Printable replacement text.
+            timeout: Overall replacement timeout budget in seconds.
+
+        Returns:
+            Result of the replacement primitive.
+        """
+        with self._lock:
+            self._ensure_open()
+            return adb_input.replace_text(
+                self._runner, self.descriptor.device_id, text, timeout=timeout
+            )
+
     def close(self) -> None:
         """Mark this session closed; later operations will be rejected."""
         with self._lock:

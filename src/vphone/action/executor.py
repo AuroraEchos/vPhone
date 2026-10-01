@@ -10,6 +10,7 @@ from vphone.action.models import (
     ActionKind,
     ActionResult,
     KeyAction,
+    ReplaceTextAction,
     SwipeAction,
     TapAction,
     TextAction,
@@ -62,6 +63,8 @@ class ActionExecutor:
                 primitive = self._device.key_event(action.key, **options)
             elif isinstance(action, TextAction):
                 primitive = self._device.input_text(action.text, **options)
+            elif isinstance(action, ReplaceTextAction):
+                primitive = self._device.replace_text(action.text, **options)
             else:
                 time.sleep(action.seconds)
                 primitive = None
@@ -71,7 +74,6 @@ class ActionExecutor:
                 duration_seconds=time.monotonic() - started,
                 error=exc,
             )
-
 
         return ActionResult(
             kind=kind,
@@ -90,6 +92,8 @@ def _kind_of(action: Action) -> ActionKind:
         return ActionKind.KEY
     if isinstance(action, TextAction):
         return ActionKind.TEXT
+    if isinstance(action, ReplaceTextAction):
+        return ActionKind.REPLACE_TEXT
     if isinstance(action, WaitAction):
         return ActionKind.WAIT
     raise TypeError("action must be a supported L2 action")
@@ -104,4 +108,4 @@ if __name__ == "__main__":
     with backend.open(devices[0].device_id) as device:
         executor = ActionExecutor(device)
 
-        executor.execute(TextAction("不同软件输入测试"))
+        executor.execute(ReplaceTextAction("你好"))

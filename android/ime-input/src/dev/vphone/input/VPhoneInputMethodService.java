@@ -9,6 +9,8 @@ import android.os.Build;
 import android.text.InputType;
 import android.util.Base64;
 import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.ExtractedText;
+import android.view.inputmethod.ExtractedTextRequest;
 import android.view.inputmethod.InputConnection;
 
 import java.nio.charset.StandardCharsets;
@@ -16,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 /** Commits ADB-provided text through the focused editor's standard input connection. */
 public final class VPhoneInputMethodService extends InputMethodService {
     public static final String ACTION_COMMIT_TEXT = "dev.vphone.input.COMMIT_TEXT";
+    public static final String ACTION_REPLACE_TEXT = "dev.vphone.input.REPLACE_TEXT";
     public static final String EXTRA_TEXT_BASE64 = "text_base64";
 
     private static final int RESULT_COMMITTED = 1;
@@ -51,6 +54,12 @@ public final class VPhoneInputMethodService extends InputMethodService {
                 return;
             }
 
+            if (ACTION_REPLACE_TEXT.equals(intent.getAction()) && !selectAll(connection)) {
+                setResultCode(RESULT_REJECTED);
+                setResultData("input connection rejected select all");
+                return;
+            }
+
             if (!connection.commitText(text, 1)) {
                 setResultCode(RESULT_REJECTED);
                 setResultData("input connection rejected text");
@@ -66,6 +75,7 @@ public final class VPhoneInputMethodService extends InputMethodService {
     public void onCreate() {
         super.onCreate();
         IntentFilter filter = new IntentFilter(ACTION_COMMIT_TEXT);
+        filter.addAction(ACTION_REPLACE_TEXT);
         if (Build.VERSION.SDK_INT >= 33) {
             registerReceiver(
                     receiver,
@@ -83,5 +93,16 @@ public final class VPhoneInputMethodService extends InputMethodService {
     public void onDestroy() {
         unregisterReceiver(receiver);
         super.onDestroy();
+    }
+
+    private static boolean selectAll(InputConnection connection) {
+        ExtractedText extracted = connection.getExtractedText(new ExtractedTextRequest(), 0);
+        if (extracted != null && extracted.text != null && extracted.startOffset >= 0) {
+            int start = extracted.startOffset;
+            if (connection.setSelection(start, start + extracted.text.length())) {
+                return true;
+            }
+        }
+        return connection.performContextMenuAction(android.R.id.selectAll);
     }
 }
