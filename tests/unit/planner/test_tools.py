@@ -8,6 +8,7 @@ import pytest
 
 from vphone.action import (
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -56,7 +57,7 @@ def test_every_tool_requires_task_aware_trace_fields(screen: ScreenFrame) -> Non
     """Require screen meaning and decision intent for every possible decision."""
     tools = tools_for_screen(screen)
 
-    assert len(tools) == 8
+    assert len(tools) == 9
     assert all(tool["function"]["name"] != "request_confirmation" for tool in tools)
     for tool in tools:
         parameters = tool["function"]["parameters"]
@@ -76,6 +77,7 @@ def test_coordinate_rejects_bad_values(screen: ScreenFrame, x: object, y: object
 def test_parse_supported_tools(screen: ScreenFrame) -> None:
     """Verify parse supported tools."""
     tap = parse_tool_call("tap", _args(x=1215, y=0), screen)
+    long_press = parse_tool_call("long_press", _args(x=500, y=800), screen)
     swipe = parse_tool_call(
         "swipe",
         _args(start_x=500, start_y=800, end_x=500, end_y=300, duration_ms=350),
@@ -86,6 +88,7 @@ def test_parse_supported_tools(screen: ScreenFrame) -> None:
     replaced = parse_tool_call("replace_text", _args(text="updated"), screen)
     wait = parse_tool_call("wait", _args(seconds=3), screen)
     assert tap == ActionDecision(TapAction(Point(1215, 0)), TRACE)
+    assert long_press == ActionDecision(LongPressAction(Point(500, 800)), TRACE)
     assert isinstance(swipe, ActionDecision) and isinstance(swipe.action, SwipeAction)
     assert swipe.trace == TRACE
     assert key == ActionDecision(KeyAction(KeyCode.BACK), TRACE)
@@ -120,6 +123,7 @@ def test_wait_tool_advertises_and_enforces_upper_cap(screen: ScreenFrame) -> Non
         ("tap", _args(x=1, y=2, extra=3)),
         ("tap", _args(x=True, y=2)),
         ("tap", _args(x=1216, y=2)),
+        ("long_press", _args(x=1, y=2640)),
         (
             "swipe",
             _args(start_x=0, start_y=0, end_x=1, end_y=1, duration_ms=10001),

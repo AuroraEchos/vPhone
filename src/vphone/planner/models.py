@@ -9,6 +9,7 @@ from vphone.action.models import (
     Action,
     ActionResult,
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -127,6 +128,10 @@ class StepRecord:
             if include_coordinates:
                 return f"tap(x={action.point.x}, y={action.point.y})"
             return "tap"
+        if isinstance(action, LongPressAction):
+            if include_coordinates:
+                return f"long_press(x={action.point.x}, y={action.point.y})"
+            return "long_press"
         if isinstance(action, SwipeAction):
             if include_coordinates:
                 return (

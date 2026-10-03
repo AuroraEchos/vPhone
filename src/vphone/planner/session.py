@@ -10,6 +10,7 @@ from vphone.action import ActionExecutor
 from vphone.action.models import (
     ActionKind,
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -173,6 +174,8 @@ class PlannerSession:
 def _kind_of(action) -> ActionKind:
     if isinstance(action, TapAction):
         return ActionKind.TAP
+    if isinstance(action, LongPressAction):
+        return ActionKind.LONG_PRESS
     if isinstance(action, SwipeAction):
         return ActionKind.SWIPE
     if isinstance(action, KeyAction):

@@ -10,7 +10,14 @@ from types import SimpleNamespace
 import pytest
 
 import vphone.main as cli
-from vphone.action import ActionKind, ActionResult, ReplaceTextAction, TapAction, TextAction
+from vphone.action import (
+    ActionKind,
+    ActionResult,
+    LongPressAction,
+    ReplaceTextAction,
+    TapAction,
+    TextAction,
+)
 from vphone.device import Point
 from vphone.planner.models import (
     DecisionTrace,
@@ -187,3 +194,20 @@ def test_progress_output_includes_current_action_coordinates(
     assert "├── duration: 0.250s" in output
     assert "└── usage\n    ├── prompt=3593 completion=129 total=3722" in output
     assert output.endswith("    └── cache_hit=2304 cache_miss=1289\n")
+
+
+def test_progress_output_includes_long_press_coordinates(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Expose the current long-press point in local progress output."""
+    step = StepRecord(
+        "obs",
+        "a" * 64,
+        LongPressAction(Point(12, 34)),
+        ActionResult(ActionKind.LONG_PRESS, 1.0),
+        DecisionTrace("A context target is visible", "Open its context menu"),
+    )
+
+    cli._report_step(step)
+
+    assert "├── action: long_press(x=12, y=34)" in capsys.readouterr().out

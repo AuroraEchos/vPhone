@@ -17,6 +17,7 @@ _IME_SERVICE = "dev.vphone.input/.VPhoneInputMethodService"
 _IME_COMMIT_ACTION = "dev.vphone.input.COMMIT_TEXT"
 _IME_REPLACE_ACTION = "dev.vphone.input.REPLACE_TEXT"
 _IME_VERSION_CODE = 4
+_LONG_PRESS_DURATION_MS = 1000
 _BROADCAST_RESULT = re.compile(rb"Broadcast completed: result=(-?\d+)(?:, data=\"([^\"]*)\")?")
 _IME_COMPONENT = re.compile(r"^[A-Za-z0-9._]+/[A-Za-z0-9._$]+$")
 
@@ -45,6 +46,41 @@ def tap(
         timeout=timeout,
     )
     return PrimitiveResult("tap", result.duration_seconds)
+
+
+def long_press(
+    runner: AdbRunner,
+    serial: str,
+    point: Point,
+    *,
+    timeout: float = 5.0,
+) -> PrimitiveResult:
+    """Hold one screen coordinate long enough to trigger a long press.
+
+    Args:
+        runner: ADB command runner.
+        serial: Target device serial.
+        point: Screen pixel to hold.
+        timeout: Maximum command duration in seconds.
+
+    Returns:
+        The completed long-press primitive and its duration.
+    """
+    result = runner.run(
+        (
+            "shell",
+            "input",
+            "swipe",
+            str(point.x),
+            str(point.y),
+            str(point.x),
+            str(point.y),
+            str(_LONG_PRESS_DURATION_MS),
+        ),
+        serial=serial,
+        timeout=timeout,
+    )
+    return PrimitiveResult("long_press", result.duration_seconds)
 
 
 def swipe(

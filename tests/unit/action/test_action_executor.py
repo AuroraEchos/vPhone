@@ -8,6 +8,7 @@ from vphone.action import (
     ActionExecutor,
     ActionKind,
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -34,6 +35,10 @@ class FakeDevice:
         """Record a tap request."""
         return self._record("tap", (point,), kwargs)
 
+    def long_press(self, point: Point, **kwargs) -> PrimitiveResult:
+        """Record a long-press request."""
+        return self._record("long_press", (point,), kwargs)
+
     def swipe(self, start: Point, end: Point, **kwargs) -> PrimitiveResult:
         """Record a swipe request."""
         return self._record("swipe", (start, end), kwargs)
@@ -55,6 +60,13 @@ class FakeDevice:
     ("action", "kind", "operation", "args", "kwargs"),
     [
         (TapAction(Point(10, 20)), ActionKind.TAP, "tap", (Point(10, 20),), {}),
+        (
+            LongPressAction(Point(10, 20)),
+            ActionKind.LONG_PRESS,
+            "long_press",
+            (Point(10, 20),),
+            {},
+        ),
         (
             SwipeAction(Point(1, 2), Point(3, 4), duration_ms=250),
             ActionKind.SWIPE,

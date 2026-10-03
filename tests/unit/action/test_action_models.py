@@ -6,6 +6,7 @@ import pytest
 
 from vphone.action import (
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -19,6 +20,12 @@ def test_tap_requires_point() -> None:
     """Verify tap requires point."""
     with pytest.raises(TypeError, match="Point"):
         TapAction((1, 2))  # type: ignore[arg-type]
+
+
+def test_long_press_requires_point() -> None:
+    """Verify long press requires a validated screen point."""
+    with pytest.raises(TypeError, match="Point"):
+        LongPressAction((1, 2))  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("duration", [0, 10_001])

@@ -5,6 +5,7 @@ from __future__ import annotations
 from vphone.action import (
     ActionKind,
     ActionResult,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -32,6 +33,7 @@ class FakeDevice:
         """Initialize screenshot and tap counters for planner tests."""
         self.screen_calls = 0
         self.taps: list[Point] = []
+        self.long_presses: list[Point] = []
 
     def capture_screen(self, *, timeout: float = 10.0) -> ScreenFrame:
         """Return a distinct synthetic frame for each observation."""
@@ -50,6 +52,11 @@ class FakeDevice:
         """Record a tap without touching a real device."""
         self.taps.append(point)
         return PrimitiveResult("tap", 0.0)
+
+    def long_press(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult:
+        """Record a long press without touching a real device."""
+        self.long_presses.append(point)
+        return PrimitiveResult("long_press", 0.0)
 
 
 class FakeModel:
@@ -115,6 +122,23 @@ def test_step_callback_reports_executed_action() -> None:
     assert result.status is SessionStatus.RUNNING
     assert reported == list(result.steps)
     assert result.steps[0].usage == usage
+
+
+def test_session_dispatches_long_press_as_one_action() -> None:
+    """Route a validated long press through the session and record it once."""
+    device = FakeDevice()
+    session = PlannerSession(
+        FakeModel([ActionDecision(LongPressAction(Point(30, 40)), TRACE)]),
+        "Open the context menu",
+        device,
+        settle_seconds=0,
+    )
+
+    result = session.step()
+
+    assert result.status is SessionStatus.RUNNING
+    assert device.long_presses == [Point(30, 40)]
+    assert result.steps[0].result.kind is ActionKind.LONG_PRESS
 
 
 def test_action_limit_stops_before_extra_execution() -> None:
@@ -267,6 +291,13 @@ def test_step_record_describes_actions_without_exposing_text() -> None:
         ActionResult(ActionKind.SWIPE, 0.2),
         TRACE,
     )
+    long_press = StepRecord(
+        "obs-long-press",
+        "d" * 64,
+        LongPressAction(Point(15, 25)),
+        ActionResult(ActionKind.LONG_PRESS, 1.0),
+        TRACE,
+    )
 
     assert text.describe_action() == "input_text(13 characters)"
     assert "private value" not in text.describe_action(include_coordinates=True)
@@ -277,3 +308,5 @@ def test_step_record_describes_actions_without_exposing_text() -> None:
         "swipe(start=(10, 20), end=(30, 40), duration_ms=350)"
     )
     assert swipe.result_description == "device command completed"
+    assert long_press.describe_action() == "long_press"
+    assert long_press.describe_action(include_coordinates=True) == "long_press(x=15, y=25)"

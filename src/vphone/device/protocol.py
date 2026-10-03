@@ -31,6 +31,10 @@ class DeviceSession(Protocol):
         """Tap a concrete screen pixel and report command completion."""
         ...
 
+    def long_press(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult:
+        """Long-press a concrete screen pixel and report command completion."""
+        ...
+
     def swipe(
         self,
         start: Point,
