@@ -44,6 +44,25 @@ def test_tap_builds_input_command() -> None:
     assert result.operation == "tap"
 
 
+def test_long_press_builds_fixed_duration_hold_command() -> None:
+    """Represent a long press as a one-second swipe that does not move."""
+    runner = FakeRunner()
+
+    result = adb_input.long_press(runner, "serial", Point(12, 34))
+
+    assert runner.calls[0][0] == (
+        "shell",
+        "input",
+        "swipe",
+        "12",
+        "34",
+        "12",
+        "34",
+        "1000",
+    )
+    assert result.operation == "long_press"
+
+
 def test_swipe_validates_duration() -> None:
     """Verify swipe validates duration."""
     with pytest.raises(InputError, match="between"):

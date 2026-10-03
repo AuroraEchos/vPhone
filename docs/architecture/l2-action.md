@@ -39,11 +39,12 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 
 ## 3. 公开数据契约
 
-动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是六种动作的联合类型。
+动作对象采用冻结 dataclass，创建时即进行结构校验；`Action` 是七种动作的联合类型。
 
 | 动作 | 参数 | 校验 | L1 派发目标 |
 | --- | --- | --- | --- |
 | `TapAction` | `point: Point` | 必须是 `Point`；坐标为非负整数 | `device.tap(point)` |
+| `LongPressAction` | `point: Point` | 必须是 `Point`；坐标为非负整数 | `device.long_press(point)` |
 | `SwipeAction` | `start: Point`、`end: Point`、`duration_ms=300` | 起终点为 `Point`，持续时间为 1–10000 ms 的整数 | `device.swipe(start, end, duration_ms=...)` |
 | `KeyAction` | `key: KeyCode \| int` | 预定义键或非负整数；布尔值不算整数键码 | `device.key_event(key)` |
 | `TextAction` | `text: str` | 非空、可打印字符串 | `device.input_text(text)` |
@@ -52,7 +53,7 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 
 `Point` 来自 L1，表示设备屏幕像素坐标；类型与非负性校验不等于屏幕内校验。上层应依据**最近一次有效观测**的尺寸和目标边界选择坐标，并考虑页面滚动、动画与旋转造成的失效。`TextAction` 与 `ReplaceTextAction` 的 `repr` 都隐藏文本字段，但这只降低误打印风险，不构成完整的敏感数据保护；文本仍传给 L1、ADB 及设备。
 
-`ActionKind` 分别为 `tap`、`swipe`、`key`、`text`、`replace_text`、`wait`。`ActionResult` 字段含义如下：
+`ActionKind` 分别为 `tap`、`long_press`、`swipe`、`key`、`text`、`replace_text`、`wait`。`ActionResult` 字段含义如下：
 
 | 字段 | 含义 |
 | --- | --- |
@@ -75,7 +76,7 @@ L2 不主动采集截图，也不根据 `DeviceCapabilities` 自动改写动作�
 
 | 动作 | `timeout=None` 时继承的 L1 默认值 |
 | --- | ---: |
-| 点击 / 滑动 / 按键 | 5 s |
+| 点击 / 长按 / 滑动 / 按键 | 5 s |
 | 文本插入 / 替换 | 10 s |
 
 显式 `timeout` 原样传给 L1。这个值不是 L2 另起的一层“强制截止时间”；L1 的锁等待、本地解码与多步清理等阶段可能使实际墙上耗时超过数值。`ActionResult.duration_seconds` 与 `PrimitiveResult.duration_seconds` 的测量范围不同，不应直接当作相同指标比较：前者覆盖 L2 调用整体，后者取决于各 L1 原语的实现。

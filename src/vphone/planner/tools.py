@@ -8,6 +8,7 @@ from typing import Any
 from vphone.action.models import (
     MAX_WAIT_SECONDS,
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -81,6 +82,14 @@ def tools_for_screen(screen: ScreenFrame) -> list[dict[str, Any]]:
         _tool(
             "tap",
             "Tap one visible target using exact x/y pixels in the full current screenshot.",
+            {"x": x_coord, "y": y_coord},
+        ),
+        _tool(
+            "long_press",
+            (
+                "Long-press one visible target at exact x/y pixels in the full current "
+                "screenshot. Use only when a hold gesture is required."
+            ),
             {"x": x_coord, "y": y_coord},
         ),
         _tool(
@@ -161,6 +170,7 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
     trace_fields = {"screen_summary", "decision_reason"}
     expected = {
         "tap": {"x", "y"},
+        "long_press": {"x", "y"},
         "swipe": {"start_x", "start_y", "end_x", "end_y", "duration_ms"},
         "press_key": {"key"},
         "input_text": {"text"},
@@ -182,6 +192,10 @@ def parse_tool_call(name: str, arguments: str, screen: ScreenFrame) -> Decision:
 
     if name == "tap":
         return ActionDecision(TapAction(to_screen_point(values["x"], values["y"], screen)), trace)
+    if name == "long_press":
+        return ActionDecision(
+            LongPressAction(to_screen_point(values["x"], values["y"], screen)), trace
+        )
     if name == "swipe":
         duration = values["duration_ms"]
         if type(duration) is not int or not 100 <= duration <= 2000:

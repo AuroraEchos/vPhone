@@ -14,6 +14,7 @@ MAX_WAIT_SECONDS = 30.0
 
 class ActionKind(StrEnum):
     TAP = "tap"
+    LONG_PRESS = "long_press"
     SWIPE = "swipe"
     KEY = "key"
     TEXT = "text"
@@ -29,6 +30,16 @@ class TapAction:
         """Require a validated screen point for a tap."""
         if not isinstance(self.point, Point):
             raise TypeError("tap point must be a Point")
+
+
+@dataclass(frozen=True, slots=True)
+class LongPressAction:
+    point: Point
+
+    def __post_init__(self) -> None:
+        """Require a validated screen point for a long press."""
+        if not isinstance(self.point, Point):
+            raise TypeError("long-press point must be a Point")
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,7 +115,15 @@ class WaitAction:
         object.__setattr__(self, "seconds", min(float(self.seconds), MAX_WAIT_SECONDS))
 
 
-Action = TapAction | SwipeAction | KeyAction | TextAction | ReplaceTextAction | WaitAction
+Action = (
+    TapAction
+    | LongPressAction
+    | SwipeAction
+    | KeyAction
+    | TextAction
+    | ReplaceTextAction
+    | WaitAction
+)
 
 
 @dataclass(frozen=True, slots=True)

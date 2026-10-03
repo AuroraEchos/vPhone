@@ -16,7 +16,7 @@ from vphone.planner.tools import parse_tool_call, tools_for_screen
 _INSTRUCTIONS = """You operate an Android phone using ONLY the current screenshot and the task.
 
 The screenshot is the only source of truth. It is the FULL image, not a crop.
-For tap/swipe, x and y are INTEGER PIXEL coordinates in the full screenshot.
+For tap/long_press/swipe, x and y are INTEGER PIXEL coordinates in the full screenshot.
 Use the provided screenshot width and height to locate targets.
 
 Call exactly ONE function per response. Do not return plain text or multiple calls.
@@ -28,6 +28,8 @@ Do not copy passwords, tokens, or other sensitive values into either field.
 Treat prior trajectory as past context only; the current screenshot is authoritative.
 
 Actions:
+- Use long_press only when the visible target requires a hold gesture, such as opening a
+  context menu. A normal activation should use tap.
 - Use input_text to insert text at the current cursor.
 - If the focused field already contains a value that must be fully replaced, use replace_text.
   Do not long-press, select-all, or delete character by character.

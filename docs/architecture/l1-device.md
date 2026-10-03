@@ -47,6 +47,7 @@ ADB 客户端 → ADB server → Android 设备
 | `DeviceSession.health_check()` | 5 s | 当前 `DeviceHealth`，区别于打开时的描述快照 |
 | `capture_screen()` | 10 s | PNG `ScreenFrame`：字节、尺寸、SHA-256、采集时间、耗时 |
 | `tap(Point)` | 5 s | 坐标点击；返回 `PrimitiveResult` |
+| `long_press(Point)` | 5 s | 在坐标处固定按住 1000 ms；返回 `PrimitiveResult` |
 | `swipe(start, end, duration_ms=300)` | 5 s | 坐标滑动；时长 1–10000 ms |
 | `key_event(KeyCode \| int)` | 5 s | 预定义键或非负整数键码 |
 | `input_text(text)` | 10 s | 在当前焦点的光标或选区插入非空、可打印文本 |
@@ -74,7 +75,7 @@ L1 不获取 UI Automator hierarchy，不解析 XML，也不尝试读取 App 元
 
 | 原语 | 实现 | 主要约束 |
 | --- | --- | --- |
-| 点击 / 滑动 / 按键 | `adb shell input tap/swipe/keyevent` | 返回只说明命令正常结束，不证明 UI 效果 |
+| 点击 / 长按 / 滑动 / 按键 | `adb shell input tap/swipe/keyevent` | 长按是同点起止的 1000 ms swipe；返回只说明命令正常结束，不证明 UI 效果 |
 | 文本插入 / 替换 | 项目自带的无界面 IME 调用 `InputConnection` | Android API 21+；目标必须是能接受系统键盘输入的当前编辑器 |
 
 文本输入不再区分 ASCII 与 Unicode，也不依赖 UI Automator、可访问性节点或剪贴板。`input_text()` 在当前光标或选区调用 `commitText()`；`replace_text()` 先通过输入连接取得并全选编辑器内容，再一次性提交新文本。如果编辑器不允许获取或全选内容，替换会显式失败，不会退化成追加。两者都要求目标编辑器已经获得焦点。
@@ -121,7 +122,7 @@ uv run --extra dev ruff format --check .
 ## 7. 当前限制
 
 - 没有跨进程设备租约、自动重连或设备资源调度；多进程/多机共享设备需要额外协调。
-- 输入只支持坐标、按键、可打印文本插入与整体替换；无直接控件点击、长按、多点触控或剪贴板方案。
+- 输入只支持坐标点击、固定时长长按、滑动、按键、可打印文本插入与整体替换；无直接控件点击、多点触控或剪贴板方案。
 - 截图不是页面稳定性证明；滚动、动画、弹窗或旋转后必须重新采集。
 - 设备能力是静态声明，不是逐应用、逐输入框的探测结果。
 - 尚无截图脱敏、严格端到端超时、流式内存硬限制或产品级隐私策略。

@@ -133,6 +133,11 @@ def test_provider_sends_png_as_original_and_returns_validated_action(capsys) -> 
     assert "between home pages to search for apps" in instructions
     assert "use replace_text" in instructions
     assert any(item["function"]["name"] == "replace_text" for item in completions.kwargs["tools"])
+    long_press_tool = next(
+        item for item in completions.kwargs["tools"] if item["function"]["name"] == "long_press"
+    )
+    assert long_press_tool["function"]["parameters"]["properties"]["x"]["maximum"] == 99
+    assert "visible target requires a hold gesture" in instructions
     assert "Do not pause for user confirmation" in instructions
     assert "sending or deleting when requested" in instructions
     assert all(

@@ -111,6 +111,22 @@ class AdbDeviceSession:
             self._ensure_open()
             return adb_input.tap(self._runner, self.descriptor.device_id, point, timeout=timeout)
 
+    def long_press(self, point: Point, *, timeout: float = 5.0) -> PrimitiveResult:
+        """Long-press one screen pixel through the shared runner.
+
+        Args:
+            point: Pixel to hold for the fixed long-press duration.
+            timeout: Maximum ADB command duration in seconds.
+
+        Returns:
+            Result of the long-press primitive.
+        """
+        with self._lock:
+            self._ensure_open()
+            return adb_input.long_press(
+                self._runner, self.descriptor.device_id, point, timeout=timeout
+            )
+
     def swipe(
         self,
         start: Point,

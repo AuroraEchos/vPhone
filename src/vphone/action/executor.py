@@ -10,6 +10,7 @@ from vphone.action.models import (
     ActionKind,
     ActionResult,
     KeyAction,
+    LongPressAction,
     ReplaceTextAction,
     SwipeAction,
     TapAction,
@@ -55,6 +56,8 @@ class ActionExecutor:
         try:
             if isinstance(action, TapAction):
                 primitive = self._device.tap(action.point, **options)
+            elif isinstance(action, LongPressAction):
+                primitive = self._device.long_press(action.point, **options)
             elif isinstance(action, SwipeAction):
                 primitive = self._device.swipe(
                     action.start, action.end, duration_ms=action.duration_ms, **options
@@ -86,6 +89,8 @@ def _kind_of(action: Action) -> ActionKind:
     """Map an L2 action instance to its result kind."""
     if isinstance(action, TapAction):
         return ActionKind.TAP
+    if isinstance(action, LongPressAction):
+        return ActionKind.LONG_PRESS
     if isinstance(action, SwipeAction):
         return ActionKind.SWIPE
     if isinstance(action, KeyAction):
@@ -101,6 +106,7 @@ def _kind_of(action: Action) -> ActionKind:
 
 if __name__ == "__main__":
     from vphone.device import AdbDeviceBackend
+    from vphone.device.models import Point
 
     backend = AdbDeviceBackend()
     devices = backend.list_devices()
@@ -108,4 +114,4 @@ if __name__ == "__main__":
     with backend.open(devices[0].device_id) as device:
         executor = ActionExecutor(device)
 
-        executor.execute(ReplaceTextAction("你好"))
+        executor.execute(LongPressAction(Point(100, 200)))
