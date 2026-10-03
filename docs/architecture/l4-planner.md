@@ -58,7 +58,7 @@ ActionExecutor：执行一个 L2 动作
 
 ### 2.3 控制器返回值
 
-`SessionResult` 包含 `status`、`message`、`steps` 和 `latest_observation`。`steps` 是当前会话的累计动作记录，每项 `StepRecord` 保存所依据的观测 ID / 截图哈希、模型生成的页面摘要与决策原因、已派发动作、L2 结果和 Provider 返回的 token usage，并提供统一的脱敏动作与结果描述；CLI 和后续模型轨迹都从该记录生成展示，不直接打印 Provider 的原始响应。如果同一步因工具格式错误发生一次模型重试，usage 记录两次请求的合计。CLI 不保存截图或轨迹。`status=running` 表示本次调用已完成一个动作、会话仍可继续；`status=finished` 仅表示模型根据最后一张截图宣称完成，不是独立的业务证明。其它终止状态为 `stopped`、`action_limit`、`time_limit`、`error`。`terminal` 属性统一说明调用方是否应停止推进，终止后重复调用 `step()` 会返回同一结果且不再访问设备。
+`SessionResult` 包含 `status`、`message`、`steps`、`latest_observation` 和可选的 `terminal_trace`。`steps` 是当前会话的累计设备动作记录，每项 `StepRecord` 保存所依据的观测 ID / 截图哈希、模型生成的页面摘要与决策原因、已派发动作、L2 结果和 Provider 返回的 token usage，并提供统一的脱敏动作与结果描述；CLI 和后续模型轨迹都从该记录生成展示，不直接打印 Provider 的原始响应。`finish` 和模型主动调用的 `stop` 没有设备动作，其屏幕描述和决策原因保存在 `terminal_trace`，CLI 会在终止时输出；其它终止原因没有此字段。如果同一步因工具格式错误发生一次模型重试，usage 记录两次请求的合计。CLI 不保存截图或轨迹。`status=running` 表示本次调用已完成一个动作、会话仍可继续；`status=finished` 仅表示模型根据最后一张截图宣称完成，不是独立的业务证明。其它终止状态为 `stopped`、`action_limit`、`time_limit`、`error`。`terminal` 属性统一说明调用方是否应停止推进，终止后重复调用 `step()` 会返回同一结果且不再访问设备。
 
 ### 2.4 运行时任务感知轨迹
 
@@ -94,7 +94,7 @@ uv run python scripts/probe_coordinates.py
 uv run vphone "在系统设置中查看当前电量"
 ```
 
-根目录 [`.env.example`](../../.env.example) 是可提交的配置模板；本地 `.env` 已被 Git 忽略。`vphone` 从当前工作目录向上寻找 `.env` 并加载，再由 `ModelConfig.from_env()` 读取配置；已有进程环境变量优先。必填字段是 `VPHONE_API_KEY`、`VPHONE_MODEL_BASE_URL`、`VPHONE_MODEL_ID`。可选字段是 `VPHONE_MODEL_TIMEOUT_SECONDS`（默认 90）、`VPHONE_MODEL_MAX_OUTPUT_TOKENS`（默认 4096）、`VPHONE_MODEL_REASONING_EFFORT` 和 `VPHONE_MODEL_IMAGE_DETAIL`（后两者未设置时不发送）。示例配置的图片细节为 `original`。任务预算可设置 `VPHONE_MAX_ACTIONS`（默认 12）、`VPHONE_MAX_SECONDS`（默认 600）和 `VPHONE_SETTLE_SECONDS`（默认 0.5）。设备动作不自动重试；CLI 的进度日志输出页面摘要、决策理由、动作描述、设备命令结果与耗时，但不打印输入文本。
+根目录 [`.env.example`](../../.env.example) 是可提交的配置模板；本地 `.env` 已被 Git 忽略。`vphone` 从当前工作目录向上寻找 `.env` 并加载，再由 `ModelConfig.from_env()` 读取配置；已有进程环境变量优先。必填字段是 `VPHONE_API_KEY`、`VPHONE_MODEL_BASE_URL`、`VPHONE_MODEL_ID`。可选字段是 `VPHONE_MODEL_TIMEOUT_SECONDS`（默认 90）、`VPHONE_MODEL_MAX_OUTPUT_TOKENS`（默认 4096）、`VPHONE_MODEL_REASONING_EFFORT` 和 `VPHONE_MODEL_IMAGE_DETAIL`（后两者未设置时不发送）。示例配置的图片细节为 `original`。任务预算可设置 `VPHONE_MAX_ACTIONS`（CLI 默认 20）、`VPHONE_MAX_SECONDS`（默认 600）和 `VPHONE_SETTLE_SECONDS`（默认 0.5）。设备动作不自动重试；CLI 的进度日志输出页面摘要、决策理由、动作描述、设备命令结果与耗时，但不打印输入文本。
 
 运行前应确认手机已授权，必要时设置 `VPHONE_DEVICE_ID`；脚本只在恰有一台 ready 设备时自动选择。真机截图会发给所配置的模型服务，请仅在允许传输当前页面的设备上运行。不要把 `.env`、截图、模型完整请求或响应写进提交及共享日志。更换端点后先运行无触碰坐标探针，再做受限真机验收。
 

@@ -22,6 +22,7 @@ from vphone.perception.errors import PerceptionError
 from vphone.planner.errors import PlannerError
 from vphone.planner.models import (
     ActionDecision,
+    DecisionTrace,
     FinishDecision,
     SessionResult,
     SessionStatus,
@@ -120,9 +121,9 @@ class PlannerSession:
         if self._time_limit_reached():
             return self._terminate(SessionStatus.TIME_LIMIT, "time limit reached")
         if isinstance(decision, FinishDecision):
-            return self._terminate(SessionStatus.FINISHED, decision.answer)
+            return self._terminate(SessionStatus.FINISHED, decision.answer, decision.trace)
         if isinstance(decision, StopDecision):
-            return self._terminate(SessionStatus.STOPPED, decision.reason)
+            return self._terminate(SessionStatus.STOPPED, decision.reason, decision.trace)
         if not isinstance(decision, ActionDecision):
             return self._terminate(SessionStatus.ERROR, "unsupported decision")
         if len(self._steps) >= self._max_actions:
@@ -154,11 +155,17 @@ class PlannerSession:
     def _time_limit_reached(self) -> bool:
         return time.monotonic() - self._started >= self._max_seconds
 
-    def _result(self, status: SessionStatus, message: str) -> SessionResult:
-        return SessionResult(status, message, tuple(self._steps), self._latest_observation)
+    def _result(
+        self, status: SessionStatus, message: str, terminal_trace: DecisionTrace | None = None
+    ) -> SessionResult:
+        return SessionResult(
+            status, message, tuple(self._steps), self._latest_observation, terminal_trace
+        )
 
-    def _terminate(self, status: SessionStatus, message: str) -> SessionResult:
-        result = self._result(status, message)
+    def _terminate(
+        self, status: SessionStatus, message: str, terminal_trace: DecisionTrace | None = None
+    ) -> SessionResult:
+        result = self._result(status, message, terminal_trace)
         self._terminal_result = result
         return result
 

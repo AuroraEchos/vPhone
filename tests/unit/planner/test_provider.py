@@ -122,9 +122,14 @@ def test_provider_sends_png_as_original_and_returns_validated_action(capsys) -> 
     assert image["url"].startswith("data:image/png;base64,")
     instructions = completions.kwargs["messages"][0]["content"]
     assert "do not repeat the same action" in instructions
-    assert "This phone uses Google Pixel Launcher" in instructions
-    assert "swiping up opens the app drawer" in instructions
-    assert "Do not waste actions" in instructions
+    assert "look for task-relevant shortcuts" in instructions
+    assert "search, filters, tabs" in instructions
+    assert "prefer them over repeated scrolling or manual browsing" in instructions
+    assert "Before calling finish:" in instructions
+    assert "A successful device command" in instructions
+    assert "In decision_reason for finish, briefly name the evidence" in instructions
+    assert "This device uses Google Pixel Launcher" in instructions
+    assert "swipe up to open the app drawer" in instructions
     assert "between home pages to search for apps" in instructions
     assert "use replace_text" in instructions
     assert any(item["function"]["name"] == "replace_text" for item in completions.kwargs["tools"])

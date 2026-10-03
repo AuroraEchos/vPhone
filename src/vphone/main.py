@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> None:
     load_dotenv(env_path)
     try:
         config = ModelConfig.from_env()
-        max_actions = int(os.getenv("VPHONE_MAX_ACTIONS", "12"))
+        max_actions = int(os.getenv("VPHONE_MAX_ACTIONS", "20"))
         max_seconds = float(os.getenv("VPHONE_MAX_SECONDS", "600"))
         settle_seconds = float(os.getenv("VPHONE_SETTLE_SECONDS", "0.5"))
     except ValueError as exc:
@@ -103,6 +103,9 @@ def main(argv: list[str] | None = None) -> None:
             if result.terminal:
                 break
     print(f"status={result.status.value}; actions={len(result.steps)}")
+    if result.terminal_trace is not None:
+        print(f"screen_summary={result.terminal_trace.screen_summary}")
+        print(f"decision_reason={result.terminal_trace.decision_reason}")
     print(result.message)
     if not result.completed:
         raise SystemExit(1)

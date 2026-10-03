@@ -169,6 +169,7 @@ class SessionResult:
     message: str
     steps: tuple[StepRecord, ...]
     latest_observation: PageObservation | None
+    terminal_trace: DecisionTrace | None = None
 
     @property
     def terminal(self) -> bool:

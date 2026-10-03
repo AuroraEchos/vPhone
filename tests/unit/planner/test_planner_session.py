@@ -19,6 +19,7 @@ from vphone.planner.models import (
     FinishDecision,
     SessionStatus,
     StepRecord,
+    StopDecision,
     TokenUsage,
 )
 from vphone.planner.session import PlannerSession
@@ -88,6 +89,7 @@ def test_each_call_executes_at_most_one_action_then_observes_again() -> None:
     assert second.status is SessionStatus.FINISHED
     assert second.completed is True
     assert second.message == "Battery 80%"
+    assert second.terminal_trace == TRACE
     assert device.taps == [Point(30, 40)]
     assert device.screen_calls == 2
     assert [item[1] for item in model.seen] == [0, 1]
@@ -184,6 +186,7 @@ def test_invalid_model_decision_stops_without_action() -> None:
     result = session.step()
 
     assert result.status is SessionStatus.ERROR
+    assert result.terminal_trace is None
     assert "bad coordinates" in result.message
     assert device.taps == []
 
@@ -203,6 +206,22 @@ def test_terminal_step_is_idempotent() -> None:
 
     assert second is first
     assert device.screen_calls == 1
+
+
+def test_stop_preserves_terminal_trace_without_adding_an_action() -> None:
+    """Keep the model's terminal explanation separate from executed steps."""
+    session = PlannerSession(
+        FakeModel([StopDecision("target not visible", TRACE)]),
+        "Find target",
+        FakeDevice(),
+        settle_seconds=0,
+    )
+
+    result = session.step()
+
+    assert result.status is SessionStatus.STOPPED
+    assert result.terminal_trace == TRACE
+    assert result.steps == ()
 
 
 def test_time_limit_stops_before_observing(monkeypatch) -> None:

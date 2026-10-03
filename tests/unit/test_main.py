@@ -71,7 +71,13 @@ def test_main_wires_task_config_device_and_planner(
 
         def step():
             """Finish without touching the synthetic device."""
-            return SessionResult(SessionStatus.FINISHED, "Battery 80%", (), None)
+            return SessionResult(
+                SessionStatus.FINISHED,
+                "Battery 80%",
+                (),
+                None,
+                DecisionTrace("Battery page shows 80%", "The requested battery value is visible"),
+            )
 
         return SimpleNamespace(step=step)
 
@@ -91,6 +97,8 @@ def test_main_wires_task_config_device_and_planner(
     assert "allowed_kinds" not in observed["options"]
     output = capsys.readouterr().out
     assert "status=finished; actions=0" in output
+    assert "screen_summary=Battery page shows 80%" in output
+    assert "decision_reason=The requested battery value is visible" in output
     assert "trajectory=" not in output
     assert not (tmp_path / "traces").exists()
     assert "on_observation" not in observed["options"]
