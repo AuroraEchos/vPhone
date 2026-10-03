@@ -98,10 +98,11 @@ def main(argv: list[str] | None = None) -> None:
             )
         except ValueError as exc:
             raise SystemExit(f"Invalid run limits: {exc}") from exc
-        while True:
-            result = session.step()
-            if result.terminal:
-                break
+        with session:
+            while True:
+                result = session.step()
+                if result.terminal:
+                    break
     print(f"status={result.status.value}; actions={len(result.steps)}")
     if result.terminal_trace is not None:
         print(f"screen_summary={result.terminal_trace.screen_summary}")
